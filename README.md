@@ -48,6 +48,11 @@ This creates a file in the bucket with the given name and returns [201 Created][
 Idempotent: if the file already exists with the provided content, [200 OK][http200] is returned.
 If the content is not matching, [409 Conflict][http409] is returned.
 
+Takes the `Content-Type` header from the request and if not present, sets it to `text/plain`.
+This is what will be returned when browsing the file.
+
+FIXME(in buck2): Add the content-type on upload of files. I don't want a content type sniffer. You don't want a content type sniffer. Let's not build one.
+
 ### POST `/v0/append/:filename?bucketName=:bucketName&writeOffset=:writeOffset`
 
 This appends to the file with the given name at the given offset and returns [200][http200], assuming that the full range being written started as zeros.
@@ -63,4 +68,4 @@ Idempotent: if the uploaded data at the given offset is identical to the data up
 
 ### GET `/explore/:bucketName/:filename`
 
-This shows the file at the given path to the browser.
+This shows the file at the given path to the browser with the `Content-Type` given on upload.
