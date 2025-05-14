@@ -19,7 +19,7 @@ async fn main() -> Result<(), BoxError> {
             get(|| async { "This is https://github.com/MercuryTechnologies/locally-euclidean" }),
         )
         // Include trace context as header into the response
-        .layer(OtelInResponseLayer::default())
+        .layer(OtelInResponseLayer)
         // Start OpenTelemetry trace on incoming request
         .layer(OtelAxumLayer::default())
         // Processed *outside* span
