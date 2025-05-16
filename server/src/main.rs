@@ -1,10 +1,10 @@
-mod tracing_setup;
-
-use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
+use axum::BoxError;
+use server::AppStateInner;
+use server::config::AppConfig;
+use server::make_app;
+use server::tracing_setup;
 use std::net::Ipv6Addr;
 use tracing::info;
-
-use axum::{BoxError, routing::get};
 
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
@@ -13,17 +13,7 @@ async fn main() -> Result<(), BoxError> {
     // does the right thing.
     let _guard = tracing_setup::init_subscribers()?;
 
-    let app = axum::Router::new()
-        .route(
-            "/",
-            get(|| async { "This is https://github.com/MercuryTechnologies/locally-euclidean" }),
-        )
-        // Include trace context as header into the response
-        .layer(OtelInResponseLayer)
-        // Start OpenTelemetry trace on incoming request
-        .layer(OtelAxumLayer::default())
-        // Processed *outside* span
-        .route("/healthcheck", get(|| async { "ok" }));
+    let app = make_app(AppStateInner::new(AppConfig::build()?));
 
     let binding = (Ipv6Addr::LOCALHOST, 9000);
     info!("Listening on http://[{}]:{}", binding.0, binding.1);
