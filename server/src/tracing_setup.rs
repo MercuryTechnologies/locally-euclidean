@@ -92,7 +92,7 @@ where
     init_propagator()?;
     let layer = tracing_opentelemetry::layer()
         .with_error_records_to_exceptions(true)
-        .with_tracer(tracer_provider.tracer(""));
+        .with_tracer(tracer_provider.tracer(env!("CARGO_PKG_NAME")));
     global::set_tracer_provider(tracer_provider.clone());
     Ok((layer, TracingGuard { tracer_provider }))
 }

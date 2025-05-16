@@ -1,5 +1,5 @@
 [workspace]
-members = ["server/", "storage"]
+members = ["server/", "storage/"]
 resolver = "3"
 
 [workspace.package]
@@ -8,18 +8,30 @@ edition = "2024"
 
 [workspace.dependencies]
 tokio = { version = "1.45.0", features = ["full"] }
-axum = "0.8.4"
+thiserror = "2.0.12"
+async-trait = "0.1.88"
+pin-project = "1.1.10"
+serde = { version = "1.0.219", features = ["derive"] }
+config = { version = "0.15.11", features = ["toml"], default-features = false }
+
+# Unix
+rustix = "1.0.7"
+tempfile = "3.20.0"
+camino = "1.1.9"
+xattr = { version = "1.5.0", default-features = false }
+
+# OTel
+axum-tracing-opentelemetry = "0.28.0"
 tracing = "0.1.41"
 opentelemetry = "0.29.1"
-axum-tracing-opentelemetry = "0.28.0"
 tracing-opentelemetry = "0.30.0"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 init-tracing-opentelemetry = { version = "0.28.0", features = ["otlp", "opentelemetry-otlp", "tls", "tonic", "tls-roots", "tracing_subscriber_ext"] }
 opentelemetry_sdk = { version = "0.29.0", features = ["tokio", "http", "opentelemetry-http"] }
-xattr = { version = "1.5.0", default-features = false }
-thiserror = "2.0.12"
-tempfile = "3.20.0"
-async-trait = "0.1.88"
-rustix = "1.0.7"
-camino = "1.1.9"
-pin-project = "1.1.10"
+
+# Web server components
+tower = { version = "0.5.2", features = ["tracing", "tokio", "tokio-stream", "tokio-util"] }
+tower-http = { version = "0.6.4", features = ["cors", "set-header"] }
+axum = "0.8.4"
+tower-service = "0.3.3"
+axum-test = "17.3.0"
