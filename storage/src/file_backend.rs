@@ -1,7 +1,17 @@
+//! A file storage backend based on the filesystem.
+//!
+//! File metadata is stored in xattrs on the files themselves.
+//!
+//! In its current design it doesn't provide atomicity for multiple append
+//! calls (e.g. as might be required for streaming HTTP bodies). In the future
+//! this might want to be changed, see the README's unanswered questions
+//! section.
+//!
+//! There is race safety for accessing individual files.
 use std::{
     collections::{HashMap, hash_map::Entry},
     io::{ErrorKind, SeekFrom},
-    os::fd::{FromRawFd, IntoRawFd, OwnedFd},
+    os::fd::{AsFd, AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -14,8 +24,11 @@ use rustix::{
     io::Errno,
 };
 use tokio::io::{AsyncRead, AsyncSeek, AsyncWriteExt};
+use xattr::FileExt;
 
-use crate::{BoxError, Bucket, FileCreateError, FileHandleOps, FileOpenError, StorageBackend};
+use crate::{
+    BoxError, Bucket, FileCreateError, FileHandleOps, FileMetadata, FileOpenError, StorageBackend,
+};
 
 /// File storage backend
 pub struct FileBackend {
@@ -89,11 +102,56 @@ impl FileBucket {
     }
 }
 
+/// File for xattrs use only. This *shares an fd with a [`tokio::fs::File`]*.
+/// Do not do any operations that are visible to `file` on this!
+struct XattrsFd(OwnedFd);
+
+impl XattrsFd {
+    /// Duplicates a file descriptor for xattrs use.
+    ///
+    /// Requires that it's a file descriptor that actually supports xattrs,
+    /// i.e. an actual file; no checks are done to ensure that.
+    fn from_dup_fd(fd: impl AsFd) -> Result<Self, Errno> {
+        let file = rustix::io::fcntl_dupfd_cloexec(fd, 0)?;
+        Ok(XattrsFd(file))
+    }
+}
+
+impl AsRawFd for XattrsFd {
+    fn as_raw_fd(&self) -> std::os::unix::prelude::RawFd {
+        self.0.as_raw_fd()
+    }
+}
+
+impl xattr::FileExt for XattrsFd {}
+
 #[pin_project]
 pub struct FileHandle<'a> {
     #[pin]
     file: tokio::fs::File,
+    file_for_xattrs: Arc<XattrsFd>,
     _lock_handle: tokio::sync::MutexGuard<'a, ()>,
+}
+
+/// See xattr(7): we are in the user namespace and we would like to not
+/// conflict with other implementations so we use a reverse domain name.
+///
+/// <https://man7.org/linux/man-pages/man7/xattr.7.html>
+fn xattr_name(attr: &str) -> String {
+    format!("user.com.mercury.locally-euclidean.{}", attr)
+}
+
+/// Error while getting/setting file attributes
+#[derive(Debug, thiserror::Error)]
+enum FileAttrError {
+    #[error("Failed to call get_xattr: {0}")]
+    GetXattrFailed(std::io::Error),
+    #[error("Corrupt attribute data: could not decode UTF8: {0}")]
+    InvalidUtf8(std::string::FromUtf8Error),
+    #[error("Failed to call set_xattr: {0}")]
+    SetXattrFailed(std::io::Error),
+    #[error("Tokio task join failed (BUG): {0}")]
+    JoinFailedBug(tokio::task::JoinError),
 }
 
 #[async_trait]
@@ -108,6 +166,42 @@ impl FileHandleOps for FileHandle<'_> {
         // N.B. This also seeks to the end due to POSIX semantics.
         self.file.write_all(data).await?;
         Ok(())
+    }
+
+    async fn get_attr(&mut self, attr: &str) -> Result<Option<String>, BoxError> {
+        let file_for_xattrs = self.file_for_xattrs.clone();
+        let attr_name = xattr_name(attr);
+
+        match tokio::task::spawn_blocking(move || file_for_xattrs.get_xattr(attr_name))
+            .await
+            .map_err(FileAttrError::JoinFailedBug)?
+            .map_err(FileAttrError::GetXattrFailed)?
+        {
+            Some(v) => Ok(Some(
+                String::from_utf8(v).map_err(FileAttrError::InvalidUtf8)?,
+            )),
+            None => Ok(None),
+        }
+    }
+
+    async fn set_attr(&mut self, attr: &str, value: &str) -> Result<(), BoxError> {
+        let file_for_attrs = self.file_for_xattrs.clone();
+        let attr_name = xattr_name(attr);
+        let value = value.to_owned();
+
+        Ok(tokio::task::spawn_blocking(move || {
+            file_for_attrs.set_xattr(attr_name, value.as_bytes())
+        })
+        .await
+        .map_err(FileAttrError::JoinFailedBug)?
+        .map_err(FileAttrError::SetXattrFailed)?)
+    }
+
+    async fn metadata(&mut self) -> Result<FileMetadata, BoxError> {
+        let metadata = self.file.metadata().await?;
+        Ok(FileMetadata {
+            size: metadata.len(),
+        })
     }
 }
 
@@ -165,6 +259,30 @@ impl FileHandle<'_> {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+enum FileBucketError {
+    #[error("error calling openat: {0}")]
+    OpenatFailed(Errno),
+    #[error("error calling fcntl_dupfd_cloexec: {0}")]
+    DupFailed(Errno),
+    #[error("error calling fstat: {0}")]
+    FstatFailed(Errno),
+    #[error("invalid file name {0:?}: {1}")]
+    BadFileName(String, FilePathError),
+}
+
+impl From<FileBucketError> for FileOpenError {
+    fn from(value: FileBucketError) -> Self {
+        Self::OtherError(value.into())
+    }
+}
+
+impl From<FileBucketError> for FileCreateError {
+    fn from(value: FileBucketError) -> Self {
+        Self::OtherError(value.into())
+    }
+}
+
 #[async_trait]
 impl Bucket for FileBucket {
     type FileHandle<'a> = FileHandle<'a>;
@@ -180,7 +298,7 @@ impl Bucket for FileBucket {
     #[must_use]
     async fn file(&self, file_name: &str) -> Result<Self::FileHandle<'_>, FileOpenError> {
         let path = FileHandle::make_acceptable_filepath(Utf8Path::new(file_name))
-            .map_err(|e| FileOpenError::OtherError(e.into()))?;
+            .map_err(|e| FileBucketError::BadFileName(file_name.to_owned(), e))?;
 
         let result = rustix::fs::openat(
             &self.dirfd,
@@ -192,14 +310,18 @@ impl Bucket for FileBucket {
         let handle = match result {
             Ok(handle) => handle,
             Err(Errno::NOENT) => Err(FileOpenError::DoesNotExist)?,
-            Err(err) => Err(FileOpenError::OtherError(err.into()))?,
+            Err(err) => Err(FileBucketError::OpenatFailed(err))?,
         };
 
-        let stat = rustix::fs::fstat(&handle).map_err(|e| FileOpenError::OtherError(e.into()))?;
+        let stat = rustix::fs::fstat(&handle).map_err(FileBucketError::FstatFailed)?;
         let lock = self.lock_pool.lock(Inode(stat.st_ino)).await;
+        let file_for_xattrs =
+            Arc::new(XattrsFd::from_dup_fd(&handle).map_err(FileBucketError::DupFailed)?);
+
         Ok(Self::FileHandle {
             // SAFETY: this is an owned open fd
             file: unsafe { tokio::fs::File::from_raw_fd(handle.into_raw_fd()) },
+            file_for_xattrs,
             _lock_handle: lock,
         })
     }
@@ -207,7 +329,7 @@ impl Bucket for FileBucket {
     #[must_use]
     async fn create_file(&self, file_name: &str) -> Result<Self::FileHandle<'_>, FileCreateError> {
         let path = FileHandle::make_acceptable_filepath(Utf8Path::new(file_name))
-            .map_err(|e| FileCreateError::OtherError(e.into()))?;
+            .map_err(|e| FileBucketError::BadFileName(file_name.to_owned(), e))?;
 
         let result = rustix::fs::openat(
             &self.dirfd,
@@ -226,14 +348,18 @@ impl Bucket for FileBucket {
         let handle = match result {
             Ok(handle) => handle,
             Err(Errno::EXIST) => Err(FileCreateError::FileExists)?,
-            Err(err) => Err(FileCreateError::OtherError(err.into()))?,
+            Err(err) => Err(FileBucketError::OpenatFailed(err))?,
         };
 
-        let stat = rustix::fs::fstat(&handle).map_err(|e| FileCreateError::OtherError(e.into()))?;
+        let stat = rustix::fs::fstat(&handle).map_err(FileBucketError::FstatFailed)?;
         let lock = self.lock_pool.lock(Inode(stat.st_ino)).await;
+        let file_for_xattrs =
+            Arc::new(XattrsFd::from_dup_fd(&handle).map_err(FileBucketError::DupFailed)?);
+
         Ok(Self::FileHandle {
             // SAFETY: this is an owned open fd
             file: unsafe { tokio::fs::File::from_raw_fd(handle.into_raw_fd()) },
+            file_for_xattrs,
             _lock_handle: lock,
         })
     }
@@ -392,6 +518,34 @@ mod tests {
         let handle2_fut = bucket.file("meow");
         drop(handle1);
         let _ = handle2_fut.await.unwrap();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_attrs() -> Result<(), BoxError> {
+        let backend = TempFileBackend::new_with_bucket("test_open_same_file_concurrency").await?;
+        let bucket = backend.bucket("bucket").await?;
+        let mut handle1 = bucket.create_file("meow").await?;
+
+        handle1.set_attr("meow", "kbity").await?;
+        assert_eq!(handle1.get_attr("meow").await?, Some("kbity".to_owned()));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_metadata() -> Result<(), BoxError> {
+        let backend = TempFileBackend::new_with_bucket("test_open_same_file_concurrency").await?;
+        let bucket = backend.bucket("bucket").await?;
+        let mut handle1 = bucket.create_file("meow").await?;
+
+        let FileMetadata { size } = handle1.metadata().await?;
+        assert_eq!(size, 0);
+
+        handle1.append(b"meow").await?;
+
+        let FileMetadata { size } = handle1.metadata().await?;
+        assert_eq!(size, 4);
         Ok(())
     }
 }
