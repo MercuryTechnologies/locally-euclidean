@@ -55,10 +55,8 @@ FIXME(in buck2): Add the content-type on upload of files. I don't want a content
 
 ### POST `/v0/append/:filename?bucketName=:bucketName&writeOffset=:writeOffset`
 
-This appends to the file with the given name at the given offset and returns [200][http200], assuming that the full range being written started as zeros.
-If it is not zeros and it also doesn't match the uploaded chunk, [409 Conflict][http409] is returned.
-
-FIXME: assuming that it's zeros allows for potential arbitrary overwriting of legitimate non-sparse zero sections in files, we might want to track sparse regions if we care
+This appends to the file with the given name at the given offset and returns [200][http200], assuming that the given position is at the end of the file.
+If the given position is not actually at the end of the file and it also doesn't match the chunk in the given position, [409 Conflict][http409] is returned.
 
 Idempotent: if the uploaded data at the given offset is identical to the data uploaded, returns [200 OK][http200].
 
