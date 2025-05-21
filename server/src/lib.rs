@@ -1,5 +1,6 @@
 pub mod api;
 pub mod config;
+mod errors;
 pub mod explore;
 mod security_headers;
 pub mod tracing_setup;

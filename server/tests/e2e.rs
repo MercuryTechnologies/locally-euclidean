@@ -24,7 +24,6 @@ impl Fixture {
 }
 
 #[tokio::test]
-#[ignore = "TODO implement"]
 async fn put_write_filename() -> Result<(), BoxError> {
     let f = Fixture::new()?;
     f.server
@@ -33,10 +32,17 @@ async fn put_write_filename() -> Result<(), BoxError> {
         .expect_success()
         .await;
 
-    // Cannot write twice
+    // Can write twice if it's idempotent
     f.server
         .put("/v0/write/meowmeow?bucketName=my_bucket")
         .text("meow!")
+        .expect_success()
+        .await;
+
+    // But can't overwrite files
+    f.server
+        .put("/v0/write/meowmeow?bucketName=my_bucket")
+        .text("kitty")
         .expect_failure()
         .await;
     Ok(())

@@ -20,14 +20,10 @@ pub enum FileOpenError {
 pub enum FileCreateError {
     #[error("File exists")]
     FileExists,
+    #[error("Invalid name")]
+    InvalidName,
     #[error("Unknown file create error: {0}")]
     OtherError(BoxError),
-}
-
-/// Metadata about a stored file.
-pub struct FileMetadata {
-    /// Size of the file in bytes.
-    pub size: u64,
 }
 
 /// Operations allowed on a file handle
@@ -44,10 +40,6 @@ pub trait FileHandleOps: AsyncRead + AsyncSeek {
 
     /// Sets an attribute on a file handle by name.
     async fn set_attr(&mut self, attr: &str, value: &str) -> Result<(), BoxError>;
-
-    /// Gets the metadata for a given file like its size and similar
-    /// properties.
-    async fn metadata(&mut self) -> Result<FileMetadata, BoxError>;
 }
 
 /// Storage backend for locally-euclidean.
@@ -56,9 +48,7 @@ pub trait Bucket {
     /// File handle for this storage backend.
     ///
     /// TODO: is this the correct syntax to require it is self in lifetime?
-    type FileHandle<'a>: FileHandleOps + 'a
-    where
-        Self: 'a;
+    type FileHandle: FileHandleOps;
 
     /// Gets a handle to the given file.
     ///
@@ -66,14 +56,14 @@ pub trait Bucket {
     /// handle") may exist to a file at a given time.
     ///
     /// FIXME: liveness semantics?
-    async fn file(&self, file_name: &str) -> Result<Self::FileHandle<'_>, FileOpenError>;
+    async fn file(&self, file_name: &str) -> Result<Self::FileHandle, FileOpenError>;
 
     /// Creates the given file and gives a handle to it.
     ///
     /// If the file exists, this returns [`FileCreateError::FileExists`], at
     /// which point the higher level should check if the contents match at the
     /// starting range.
-    async fn create_file(&self, file_name: &str) -> Result<Self::FileHandle<'_>, FileCreateError>;
+    async fn create_file(&self, file_name: &str) -> Result<Self::FileHandle, FileCreateError>;
 }
 
 #[async_trait]
@@ -82,13 +72,13 @@ where
     T: Deref<Target = Inner> + Send + Sync + 'static,
     Inner: Bucket + Send + Sync + 'static,
 {
-    type FileHandle<'a> = Inner::FileHandle<'a>;
+    type FileHandle = Inner::FileHandle;
 
-    async fn file(&self, file_name: &str) -> Result<Self::FileHandle<'_>, FileOpenError> {
+    async fn file(&self, file_name: &str) -> Result<Self::FileHandle, FileOpenError> {
         self.deref().file(file_name).await
     }
 
-    async fn create_file(&self, file_name: &str) -> Result<Self::FileHandle<'_>, FileCreateError> {
+    async fn create_file(&self, file_name: &str) -> Result<Self::FileHandle, FileCreateError> {
         self.deref().create_file(file_name).await
     }
 }
