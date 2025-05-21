@@ -67,3 +67,23 @@ Idempotent: if the uploaded data at the given offset is identical to the data up
 ### GET `/explore/:bucketName/:filename`
 
 This shows the file at the given path to the browser with the `Content-Type` given on upload.
+
+## Unanswered questions
+
+* Is it semantically acceptable to stream the request body?
+
+  Technically the request could partially finish before dying, and either we have to
+  fully buffer the request body in memory (maybe fine) or write it to the
+  final file as we go (which means that we don't have atomicity in the
+  case of surprise-disconnects). We can also ignore it for now since we don't
+  care *that* much about durability since these are just build log files.
+
+  A design change that would fix this is to use copy_file_range to
+  leverage modern CoW filesystems such that appending to a file is done by
+  appending to a buffer then renaming over the original file. However,
+  this breaks inode based locking schemes and would require locking on the
+  basis of canonicalized filename. In short: also eww edge cases!
+
+  Alternatively we could use directories for each file and write it as parts;
+  that seems simply worse however. Overall this is a reminder that all of this
+  stuff is really hard.
