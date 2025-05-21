@@ -24,7 +24,7 @@ impl Fixture {
 }
 
 #[tokio::test]
-#[ignore = "TODO"]
+#[ignore = "TODO implement"]
 async fn put_write_filename() -> Result<(), BoxError> {
     let f = Fixture::new()?;
     f.server
@@ -39,5 +39,37 @@ async fn put_write_filename() -> Result<(), BoxError> {
         .text("meow!")
         .expect_failure()
         .await;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "TODO implement"]
+async fn post_append_filename() -> Result<(), BoxError> {
+    let f = Fixture::new()?;
+    // Can't append to a file that doesn't exist
+    f.server
+        .post("/v0/append/meowmeow?bucketName=my_bucket")
+        .text("meow!")
+        .expect_failure()
+        .await;
+
+    // Appending to a file that exists works
+    f.server
+        .put("/v0/write/meowmeow?bucketName=my_bucket")
+        .text("meow!")
+        .expect_success()
+        .await;
+    f.server
+        .post("/v0/append/meowmeow?bucketName=my_bucket&writeOffset=6")
+        .text("meow!")
+        .expect_success()
+        .await;
+
+    f.server
+        .get("/explore/my_bucket/meowmeow")
+        .expect_success()
+        .await
+        .assert_text("meow!meow!");
+
     Ok(())
 }

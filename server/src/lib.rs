@@ -1,5 +1,6 @@
 pub mod api;
 pub mod config;
+pub mod explore;
 mod security_headers;
 pub mod tracing_setup;
 
@@ -28,14 +29,28 @@ impl AppStateInner {
     }
 }
 
+/// Creates the app router.
 pub fn make_app(state: AppState) -> axum::Router {
+    // Note: Middleware is applied to existing routes only; routes added after
+    // middleware will receive the middleware. In a similar fashion,
+    // `with_state` only exposes the state to the routes already defined above
+    // it.
+    //
+    // See: https://docs.rs/axum/0.8.4/axum/struct.Router.html#method.layer
     axum::Router::new()
         .route(
             "/",
             get(|| async { "This is https://github.com/MercuryTechnologies/locally-euclidean" }),
         )
         .nest("/v0", api::make_router())
+        .nest("/explore", explore::make_router())
         .layer(
+            // Process middleware requests top to bottom then responses are
+            // modified bottom to top (unlike .layer() which runs middleware on
+            // requests bottom to top then on responses top to bottom). See the
+            // diagram in
+            // https://docs.rs/axum/0.8.4/axum/middleware/index.html for
+            // details.
             ServiceBuilder::new()
                 // Start OpenTelemetry trace on incoming request
                 .layer(OtelAxumLayer::default())
