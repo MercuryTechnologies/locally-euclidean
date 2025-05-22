@@ -1,6 +1,9 @@
 {
   lib,
   craneLib,
+  stdenv,
+  vmTools,
+  e2fsprogs,
   inputs,
   rustPlatform,
   rust-analyzer,
@@ -24,6 +27,41 @@ let
     inherit cargoArtifacts;
   };
 
+  # XXX: This is a Big Hammer workaround for Lix not supporting xattr usage in
+  # the build sandbox for bad reasons.
+  # https://git.lix.systems/lix-project/lix/issues/838
+  maybeRunInLinuxVM =
+    drv:
+    if stdenv.isLinux then
+      vmTools.runInLinuxVM (
+        drv.overrideAttrs (old: {
+          # Seems that the default memory size is not large enough.
+          # This is megabytes.
+          memSize = 6072;
+
+          # Provide a rootfs that is not itself on tmpfs.
+          mountDisk = true;
+          preVM = ''
+            truncate -s 6072M ./disk-image.img
+            ${e2fsprogs}/bin/mkfs.ext4 ./disk-image.img
+            diskImage=$PWD/disk-image.img
+          '';
+        })
+      )
+    else
+      drv;
+
+  testArgs = commonArgs // {
+    # Don't run tests, just build them
+    doInstallCargoArtifacts = true;
+    cargoTestExtraArgs = "--no-run";
+  };
+  testBuild = craneLib.cargoTest testArgs;
+
+  testRunArgs = commonArgs' // {
+    cargoArtifacts = testBuild;
+  };
+
   releaseArgs = commonArgs // {
     # Don't run tests; we'll do that in a separate derivation.
     doCheck = false;
@@ -33,7 +71,8 @@ let
   };
 
   checks = {
-    locally-euclidean-tests = craneLib.cargoTest commonArgs;
+    locally-euclidean-tests-compile = testBuild;
+    locally-euclidean-tests = maybeRunInLinuxVM (craneLib.cargoTest testRunArgs);
     locally-euclidean-clippy = craneLib.cargoClippy (
       commonArgs
       // {
