@@ -38,7 +38,7 @@ impl FileBackend {
 }
 
 /// An inode number: identifier for physical file on disk.
-#[allow(dead_code)]
+#[expect(dead_code)]
 #[derive(Clone, Copy, Debug)]
 struct Inode(pub u64);
 
