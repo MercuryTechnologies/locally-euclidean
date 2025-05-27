@@ -1626,6 +1626,7 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "xattr",
 ]
 
 [[package]]
@@ -1694,6 +1695,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tracing",
  "xattr",
 ]
 

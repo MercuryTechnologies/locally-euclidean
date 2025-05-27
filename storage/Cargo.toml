@@ -4,13 +4,14 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-xattr.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 rustix.workspace = true
 camino.workspace = true
 pin-project.workspace = true
+xattr.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

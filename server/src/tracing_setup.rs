@@ -53,14 +53,15 @@ pub fn build_level_filter_layer(log_directives: &str) -> Result<EnvFilter, BoxEr
     let dirs = if log_directives.is_empty() {
         std::env::var("RUST_LOG")
             .or_else(|_| std::env::var("OTEL_LOG_LEVEL"))
-            .unwrap_or_else(|_| "info".to_string())
+            // FIXME(jadel): how do we do this to local packages more nicely?
+            .unwrap_or_else(|_| "info,storage=trace,server=trace".to_string())
     } else {
         log_directives.to_string()
     };
     let directive_to_allow_otel_trace = "otel::tracing=trace".parse()?;
 
     Ok(EnvFilter::builder()
-        .with_default_directive(LevelFilter::INFO.into())
+        .with_default_directive(LevelFilter::DEBUG.into())
         .parse_lossy(dirs)
         .add_directive(directive_to_allow_otel_trace))
 }
