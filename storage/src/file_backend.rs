@@ -69,6 +69,7 @@ struct LockPool(tokio::sync::Mutex<()>);
 
 impl LockPool {
     /// Takes the lock on the given inode
+    #[tracing::instrument(level = "debug")]
     async fn lock(&self, _inode: Inode) -> tokio::sync::MutexGuard<'_, ()> {
         self.0.lock().await
     }
@@ -104,6 +105,7 @@ impl FileBucket {
 
 /// File for xattrs use only. This *shares an fd with a [`tokio::fs::File`]*.
 /// Do not do any operations that are visible to `file` on this!
+#[derive(Debug)]
 struct XattrsFd(OwnedFd);
 
 impl XattrsFd {
@@ -125,6 +127,7 @@ impl AsRawFd for XattrsFd {
 
 impl xattr::FileExt for XattrsFd {}
 
+#[derive(Debug)]
 #[pin_project]
 pub struct FileHandle<'a> {
     #[pin]
@@ -156,6 +159,7 @@ enum FileAttrError {
 
 #[async_trait]
 impl FileHandleOps for FileHandle<'_> {
+    #[tracing::instrument(level = "debug")]
     async fn append(&mut self, data: &[u8]) -> Result<(), BoxError> {
         // XXX: this needs to be called inside a tokio::spawn task so that we
         // don't have partial writes due to cancellation safety issues.
@@ -168,6 +172,7 @@ impl FileHandleOps for FileHandle<'_> {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug")]
     async fn get_attr(&mut self, attr: &str) -> Result<Option<String>, BoxError> {
         let file_for_xattrs = self.file_for_xattrs.clone();
         let attr_name = xattr_name(attr);
@@ -184,6 +189,7 @@ impl FileHandleOps for FileHandle<'_> {
         }
     }
 
+    #[tracing::instrument(level = "debug")]
     async fn set_attr(&mut self, attr: &str, value: &str) -> Result<(), BoxError> {
         let file_for_attrs = self.file_for_xattrs.clone();
         let attr_name = xattr_name(attr);
@@ -295,6 +301,7 @@ impl Bucket for FileBucket {
     // intentionally blocking in the kernel (though IO does take time), but
     // tokio punts it to spawn_blocking anyway.
 
+    #[tracing::instrument(level = "debug")]
     #[must_use]
     async fn file(&self, file_name: &str) -> Result<Self::FileHandle<'_>, FileOpenError> {
         let path = FileHandle::make_acceptable_filepath(Utf8Path::new(file_name))
@@ -326,6 +333,7 @@ impl Bucket for FileBucket {
         })
     }
 
+    #[tracing::instrument(level = "debug")]
     #[must_use]
     async fn create_file(&self, file_name: &str) -> Result<Self::FileHandle<'_>, FileCreateError> {
         let path = FileHandle::make_acceptable_filepath(Utf8Path::new(file_name))
@@ -369,6 +377,7 @@ impl Bucket for FileBucket {
 impl StorageBackend for FileBackend {
     type Bucket<'a> = Arc<FileBucket>;
 
+    #[tracing::instrument(level = "debug", skip(self))]
     #[must_use]
     async fn bucket(&self, name: &str) -> Result<Self::Bucket<'_>, FileOpenError> {
         // These would constitute path traversal bugs when combined with
@@ -394,6 +403,7 @@ impl StorageBackend for FileBackend {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     #[must_use]
     async fn list_buckets(&self) -> Result<Vec<String>, BoxError> {
         let mut iter = tokio::fs::read_dir(&self.root_dir).await?;
