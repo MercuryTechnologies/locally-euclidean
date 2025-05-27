@@ -13,7 +13,7 @@ use std::{
     io::{ErrorKind, SeekFrom},
     os::fd::{AsFd, AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use async_trait::async_trait;
@@ -86,7 +86,7 @@ impl LockPool {
 /// Only one of these objects is allowed to exist for each directory.
 #[derive(Debug)]
 pub struct FileBucket {
-    dirfd: OwnedFd,
+    dirfd: Arc<OwnedFd>,
     lock_pool: LockPool,
 }
 
@@ -99,7 +99,7 @@ impl FileBucket {
         )?;
 
         Ok(FileBucket {
-            dirfd,
+            dirfd: Arc::new(dirfd),
             lock_pool: LockPool::default(),
         })
     }
@@ -290,6 +290,10 @@ enum FileBucketError {
     Dup(Errno),
     #[error("error calling fstat: {0}")]
     Fstat(Errno),
+    #[error("error calling create_dir_all: {0}")]
+    CreateDirAll(std::io::Error),
+    #[error("Tokio task join failed (BUG): {0}")]
+    JoinFailedBug(tokio::task::JoinError),
 }
 
 impl From<FileBucketError> for FileOpenError {
@@ -301,6 +305,32 @@ impl From<FileBucketError> for FileOpenError {
 impl From<FileBucketError> for FileCreateError {
     fn from(value: FileBucketError) -> Self {
         Self::OtherError(value.into())
+    }
+}
+
+static FLAGS: LazyLock<OFlags> = LazyLock::new(|| {
+    OFlags::RDWR | OFlags::APPEND | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC
+});
+
+/// [`std::fs::create_dir_all`] except it is relative to a dirfd.
+fn create_dir_all_dirfd<T: AsFd>(fd: impl AsRef<T>, path: &Path) -> std::io::Result<()> {
+    if path == Path::new("") {
+        return Ok(());
+    }
+
+    match rustix::fs::mkdirat(fd.as_ref(), path, Mode::RWXU | Mode::RWXG | Mode::RWXO) {
+        Ok(()) => Ok(()),
+        // Maybe needs a parent
+        Err(Errno::NOENT) => {
+            if let Some(parent) = path.parent() {
+                create_dir_all_dirfd(fd, parent)
+            } else {
+                Err(std::io::Error::other("no parent and yet ENOENT? wat"))
+            }
+        }
+        // Well, it's a directory already, so no problem!
+        Err(_) if path.is_dir() => Ok(()),
+        Err(e) => Err(e.into()),
     }
 }
 
@@ -322,12 +352,8 @@ impl Bucket for FileBucket {
         let path = FileHandle::make_acceptable_filepath(Utf8Path::new(file_name))
             .map_err(|_| FileOpenError::InvalidName)?;
 
-        let result = rustix::fs::openat(
-            &self.dirfd,
-            path.into_std_path_buf(),
-            OFlags::RDWR | OFlags::APPEND | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-            Mode::empty(),
-        );
+        let result =
+            rustix::fs::openat(&self.dirfd, path.into_std_path_buf(), *FLAGS, Mode::empty());
 
         let handle = match result {
             Ok(handle) => handle,
@@ -354,19 +380,39 @@ impl Bucket for FileBucket {
         let path = FileHandle::make_acceptable_filepath(Utf8Path::new(file_name))
             .map_err(|_| FileCreateError::InvalidName)?;
 
-        let result = rustix::fs::openat(
-            &self.dirfd,
-            path.into_std_path_buf(),
-            // CREATE | EXCL: create the file if it doesn't exist, fail if it does
-            OFlags::RDWR
-                | OFlags::APPEND
-                | OFlags::CREATE
-                | OFlags::EXCL
-                | OFlags::NOFOLLOW
-                | OFlags::NONBLOCK
-                | OFlags::CLOEXEC,
-            Mode::RUSR | Mode::WUSR | Mode::RGRP | Mode::ROTH,
-        );
+        let path = path.into_std_path_buf();
+
+        let do_open = || {
+            rustix::fs::openat(
+                &self.dirfd,
+                &path,
+                // CREATE | EXCL: create the file if it doesn't exist, fail if it does
+                *FLAGS | OFlags::CREATE | OFlags::EXCL,
+                Mode::RUSR | Mode::WUSR | Mode::RGRP | Mode::ROTH,
+            )
+        };
+
+        let result = do_open();
+
+        // Parent directory component does not exist after we optimistically
+        // tried to simply open the file, try creating it.
+        // FIXME(jadel): let-chains allow this to be simplified
+        let result = if let Err(Errno::NOENT) = result {
+            if let Some(parent) = path.parent() {
+                let dirfd = self.dirfd.clone();
+                let parent = parent.to_owned();
+
+                tokio::task::spawn_blocking(move || create_dir_all_dirfd(dirfd, &parent))
+                    .await
+                    .map_err(FileBucketError::JoinFailedBug)?
+                    .map_err(FileBucketError::CreateDirAll)?;
+                do_open()
+            } else {
+                result
+            }
+        } else {
+            result
+        };
 
         let handle = match result {
             Ok(handle) => handle,
@@ -529,6 +575,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_directories() -> Result<(), BoxError> {
+        let backend = TempFileBackend::new_with_bucket("test_directories").await?;
+
+        let bucket = backend.bucket("bucket").await?;
+        {
+            let mut file = bucket.create_file("meow/kitty").await?;
+            file.append(b"data").await?;
+        }
+
+        {
+            let mut file = bucket.file("meow/kitty").await?;
+            let mut string = String::new();
+            file.read_to_string(&mut string).await?;
+            assert_eq!(string, "data");
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_open_same_file_concurrency() -> Result<(), BoxError> {
         let backend = TempFileBackend::new_with_bucket("test_open_same_file_concurrency").await?;
 
@@ -548,7 +614,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_attrs() -> Result<(), BoxError> {
-        let backend = TempFileBackend::new_with_bucket("test_open_same_file_concurrency").await?;
+        let backend = TempFileBackend::new_with_bucket("test_attrs").await?;
         let bucket = backend.bucket("bucket").await?;
         let mut handle1 = bucket.create_file("meow").await?;
 
