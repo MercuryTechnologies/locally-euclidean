@@ -27,13 +27,13 @@ pub fn make_router() -> axum::Router<AppState> {
         .route("/append/{*filename}", post(post_append_filename))
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct WriteFilenameArgs {
     bucket_name: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct AppendFilenameArgs {
     bucket_name: String,
@@ -42,14 +42,14 @@ struct AppendFilenameArgs {
 
 #[derive(thiserror::Error, Debug)]
 enum ApiError {
-    #[error("Bucket does not exist")]
-    BucketDoesNotExist,
-    #[error("Invalid bucket name")]
-    InvalidBucketName,
-    #[error("File does not exist")]
-    FileDoesNotExist,
-    #[error("Invalid file name")]
-    InvalidFileName,
+    #[error("Bucket does not exist: {0:?}")]
+    BucketDoesNotExist(String),
+    #[error("Invalid bucket name: {0:?}")]
+    InvalidBucketName(String),
+    #[error("File does not exist: {0:?}")]
+    FileDoesNotExist(String),
+    #[error("Invalid file name: {0:?}")]
+    InvalidFileName(String),
     #[error("File already exists with conflicting content")]
     FileExistsWithConflictingContent,
     #[error("Internal error: {0}")]
@@ -59,10 +59,10 @@ enum ApiError {
 impl ServiceError for ApiError {
     fn status_code(&self) -> StatusCode {
         match self {
-            Self::BucketDoesNotExist => StatusCode::NOT_FOUND,
-            Self::InvalidBucketName => StatusCode::BAD_REQUEST,
-            Self::FileDoesNotExist => StatusCode::NOT_FOUND,
-            Self::InvalidFileName => StatusCode::BAD_REQUEST,
+            Self::BucketDoesNotExist(_) => StatusCode::NOT_FOUND,
+            Self::InvalidBucketName(_) => StatusCode::BAD_REQUEST,
+            Self::FileDoesNotExist(_) => StatusCode::NOT_FOUND,
+            Self::InvalidFileName(_) => StatusCode::BAD_REQUEST,
             Self::FileExistsWithConflictingContent => StatusCode::CONFLICT,
             Self::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -82,18 +82,18 @@ impl ApiError {
     // This is not a From impl since FileOpenError can occur for more than just
     // opening a bucket.
 
-    fn from_bucket_open_error(err: FileOpenError) -> ApiError {
+    fn from_bucket_open_error(name: &str, err: FileOpenError) -> ApiError {
         match err {
-            FileOpenError::DoesNotExist => ApiError::BucketDoesNotExist,
-            FileOpenError::InvalidName => ApiError::InvalidBucketName,
+            FileOpenError::DoesNotExist => ApiError::BucketDoesNotExist(name.to_owned()),
+            FileOpenError::InvalidName => ApiError::InvalidBucketName(name.to_owned()),
             e => Self::internal(e),
         }
     }
 
-    fn from_bucket_file_open_error(err: FileOpenError) -> ApiError {
+    fn from_bucket_file_open_error(name: &str, err: FileOpenError) -> ApiError {
         match err {
-            FileOpenError::DoesNotExist => ApiError::FileDoesNotExist,
-            FileOpenError::InvalidName => ApiError::InvalidFileName,
+            FileOpenError::DoesNotExist => ApiError::FileDoesNotExist(name.to_owned()),
+            FileOpenError::InvalidName => ApiError::InvalidFileName(name.to_owned()),
             e => Self::internal(e),
         }
     }
@@ -108,6 +108,7 @@ enum RangeMatch {
 }
 
 /// Checks that a range of data from a stream matches in length and content.
+#[tracing::instrument(level = "trace", skip(stream, file))]
 async fn check_range_matches(
     mut stream: impl Stream<Item = Result<Bytes, axum::Error>> + Unpin,
     start_position: u64,
@@ -144,6 +145,7 @@ async fn check_range_matches(
 /// PUT `/v0/write/:filename?bucketName=:bucketName`
 ///
 /// Streams the request body.
+#[tracing::instrument(level = "info", skip(state))]
 async fn put_write_filename(
     extract::State(state): extract::State<AppState>,
     extract::Path(filename): extract::Path<String>,
@@ -154,7 +156,7 @@ async fn put_write_filename(
         .store
         .bucket(&query.bucket_name)
         .await
-        .map_err(ApiError::from_bucket_open_error)?;
+        .map_err(|e| ApiError::from_bucket_open_error(&query.bucket_name, e))?;
 
     match bucket.create_file(&filename).await {
         // File doesn't exist, so we upload till we run out of data
@@ -219,6 +221,7 @@ async fn put_write_filename(
 /// POST `/v0/append/:filename?bucketName=:bucketName&writeOffset=:writeOffset`
 ///
 /// Streams the request body.
+#[tracing::instrument(level = "info", skip(state))]
 async fn post_append_filename(
     extract::State(state): extract::State<AppState>,
     extract::Path(filename): extract::Path<String>,
@@ -232,12 +235,12 @@ async fn post_append_filename(
         .store
         .bucket(&query.bucket_name)
         .await
-        .map_err(ApiError::from_bucket_open_error)?;
+        .map_err(|e| ApiError::from_bucket_open_error(&query.bucket_name, e))?;
 
     let mut file = bucket
         .file(&filename)
         .await
-        .map_err(ApiError::from_bucket_file_open_error)?;
+        .map_err(|e| ApiError::from_bucket_file_open_error(&filename, e))?;
 
     // File exists, so we upload till we run out of data
     // First, make sure that we aren't an idempotency request.

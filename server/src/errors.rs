@@ -14,8 +14,11 @@ macro_rules! service_error {
     ($name:ident) => {
         impl ::axum::response::IntoResponse for $name {
             fn into_response(self) -> axum::response::Response {
+                let status = $crate::errors::ServiceError::status_code(&self);
+                tracing::info!(type_ = std::any::type_name::<Self>(), message = %self, status = ?status, "Returned error to client");
+
                 ::axum::response::IntoResponse::into_response((
-                    $crate::errors::ServiceError::status_code(&self),
+                    status,
                     format!("{}", self),
                 ))
             }
