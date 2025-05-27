@@ -26,7 +26,9 @@ use rustix::{
 use tokio::io::{AsyncRead, AsyncSeek, AsyncWriteExt};
 use xattr::FileExt;
 
-use crate::{BoxError, Bucket, FileCreateError, FileHandleOps, FileOpenError, StorageBackend};
+use crate::{
+    BoxError, Bucket, FileCreateError, FileHandleOps, FileMetadata, FileOpenError, StorageBackend,
+};
 
 /// File storage backend
 pub struct FileBackend {
@@ -157,6 +159,12 @@ enum FileAttrError {
     JoinFailedBug(tokio::task::JoinError),
 }
 
+#[derive(Debug, thiserror::Error)]
+enum FileMetadataError {
+    #[error("Failed to call tokio File::metadata: {0}")]
+    TokioFsMetadata(std::io::Error),
+}
+
 #[async_trait]
 impl FileHandleOps for FileHandle {
     #[tracing::instrument(level = "debug")]
@@ -201,6 +209,22 @@ impl FileHandleOps for FileHandle {
         .await
         .map_err(FileAttrError::JoinFailedBug)?
         .map_err(FileAttrError::SetXattrFailed)?)
+    }
+
+    #[tracing::instrument(level = "debug")]
+    async fn metadata(&mut self) -> Result<FileMetadata, BoxError> {
+        let metadata = self
+            .file
+            .metadata()
+            .await
+            .map_err(FileMetadataError::TokioFsMetadata)?;
+
+        Ok(FileMetadata {
+            last_modified_at: metadata
+                .modified()
+                .expect("we only run on platforms that provide this")
+                .into(),
+        })
     }
 }
 
@@ -547,6 +571,47 @@ mod tests {
 
         let size = handle1.seek(SeekFrom::End(0)).await?;
         assert_eq!(size, 4);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_file_metadata_plausible() -> Result<(), BoxError> {
+        let backend = TempFileBackend::new_with_bucket("test_file_metadata_plausible").await?;
+        let bucket = backend.bucket("bucket").await?;
+        let metadata;
+        {
+            let mut handle = bucket.create_file("meow").await?;
+            metadata = handle.metadata().await?;
+        }
+
+        let metadata2;
+        {
+            let mut handle = bucket.file("meow").await?;
+            metadata2 = handle.metadata().await?;
+        }
+
+        assert_eq!(
+            metadata.last_modified_at, metadata2.last_modified_at,
+            "no modification means the time does not change"
+        );
+
+        let metadata3;
+        {
+            let mut handle = bucket.file("meow").await?;
+            handle.append(b"meow!").await?;
+        }
+        // Make sure we reopen the file to ensure we are not testing
+        // consistency semantics of the filesystem with respect to open files.
+        {
+            let mut handle = bucket.file("meow").await?;
+            metadata3 = handle.metadata().await?;
+        }
+
+        assert!(
+            metadata3.last_modified_at > metadata2.last_modified_at,
+            "modifying a file advances the timestamp"
+        );
+
         Ok(())
     }
 }

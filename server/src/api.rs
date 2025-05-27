@@ -41,7 +41,7 @@ struct AppendFilenameArgs {
 }
 
 #[derive(thiserror::Error, Debug)]
-enum ApiError {
+pub(crate) enum ApiError {
     #[error("Bucket does not exist: {0:?}")]
     BucketDoesNotExist(String),
     #[error("Invalid bucket name: {0:?}")]
@@ -75,14 +75,14 @@ impl ApiError {
     // FIXME(jadel): this really is bad error reporting and probably should be
     // replaced with miette or something which allows tracking where something
     // was wrapped.
-    fn internal(err: impl Into<axum::BoxError>) -> Self {
+    pub(crate) fn internal(err: impl Into<axum::BoxError>) -> Self {
         Self::InternalError(err.into())
     }
 
     // This is not a From impl since FileOpenError can occur for more than just
     // opening a bucket.
 
-    fn from_bucket_open_error(name: &str, err: FileOpenError) -> ApiError {
+    pub(crate) fn from_bucket_open_error(name: &str, err: FileOpenError) -> ApiError {
         match err {
             FileOpenError::DoesNotExist => ApiError::BucketDoesNotExist(name.to_owned()),
             FileOpenError::InvalidName => ApiError::InvalidBucketName(name.to_owned()),
@@ -90,7 +90,7 @@ impl ApiError {
         }
     }
 
-    fn from_bucket_file_open_error(name: &str, err: FileOpenError) -> ApiError {
+    pub(crate) fn from_bucket_file_open_error(name: &str, err: FileOpenError) -> ApiError {
         match err {
             FileOpenError::DoesNotExist => ApiError::FileDoesNotExist(name.to_owned()),
             FileOpenError::InvalidName => ApiError::InvalidFileName(name.to_owned()),
