@@ -24,7 +24,6 @@ impl Fixture {
 }
 
 #[tokio::test]
-#[ignore = "TODO implement"]
 async fn put_write_filename() -> Result<(), BoxError> {
     let f = Fixture::new()?;
     f.server
@@ -33,12 +32,22 @@ async fn put_write_filename() -> Result<(), BoxError> {
         .expect_success()
         .await;
 
-    // Cannot write twice
+    // Can write twice if it's idempotent
     f.server
         .put("/v0/write/meowmeow?bucketName=my_bucket")
         .text("meow!")
+        .expect_success()
+        .await;
+
+    // But can't overwrite files
+    let resp = f
+        .server
+        .put("/v0/write/meowmeow?bucketName=my_bucket")
+        .text("kitty")
         .expect_failure()
         .await;
+    resp.assert_status_conflict();
+    resp.assert_text("File already exists with conflicting content");
     Ok(())
 }
 
@@ -47,11 +56,14 @@ async fn put_write_filename() -> Result<(), BoxError> {
 async fn post_append_filename() -> Result<(), BoxError> {
     let f = Fixture::new()?;
     // Can't append to a file that doesn't exist
-    f.server
+    let resp = f
+        .server
         .post("/v0/append/meowmeow?bucketName=my_bucket")
         .text("meow!")
         .expect_failure()
         .await;
+    resp.assert_text("Bucket does not exist: \"my_bucket\"");
+    resp.assert_status_not_found();
 
     // Appending to a file that exists works
     f.server

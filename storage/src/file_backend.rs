@@ -26,9 +26,7 @@ use rustix::{
 use tokio::io::{AsyncRead, AsyncSeek, AsyncWriteExt};
 use xattr::FileExt;
 
-use crate::{
-    BoxError, Bucket, FileCreateError, FileHandleOps, FileMetadata, FileOpenError, StorageBackend,
-};
+use crate::{BoxError, Bucket, FileCreateError, FileHandleOps, FileOpenError, StorageBackend};
 
 /// File storage backend
 pub struct FileBackend {
@@ -65,13 +63,15 @@ struct Inode(pub u64);
 ///
 /// FIXME(jadel): some way of forcing the file handle itself into the mutex?
 #[derive(Default, Debug)]
-struct LockPool(tokio::sync::Mutex<()>);
+struct LockPool(Arc<tokio::sync::Mutex<()>>);
+
+type LockPoolGuard = tokio::sync::OwnedMutexGuard<()>;
 
 impl LockPool {
     /// Takes the lock on the given inode
     #[tracing::instrument(level = "debug")]
-    async fn lock(&self, _inode: Inode) -> tokio::sync::MutexGuard<'_, ()> {
-        self.0.lock().await
+    async fn lock(&self, _inode: Inode) -> tokio::sync::OwnedMutexGuard<()> {
+        self.0.clone().lock_owned().await
     }
 }
 
@@ -129,11 +129,11 @@ impl xattr::FileExt for XattrsFd {}
 
 #[derive(Debug)]
 #[pin_project]
-pub struct FileHandle<'a> {
+pub struct FileHandle {
     #[pin]
     file: tokio::fs::File,
     file_for_xattrs: Arc<XattrsFd>,
-    _lock_handle: tokio::sync::MutexGuard<'a, ()>,
+    _lock_handle: LockPoolGuard,
 }
 
 /// See xattr(7): we are in the user namespace and we would like to not
@@ -158,7 +158,7 @@ enum FileAttrError {
 }
 
 #[async_trait]
-impl FileHandleOps for FileHandle<'_> {
+impl FileHandleOps for FileHandle {
     #[tracing::instrument(level = "debug")]
     async fn append(&mut self, data: &[u8]) -> Result<(), BoxError> {
         // XXX: this needs to be called inside a tokio::spawn task so that we
@@ -202,16 +202,9 @@ impl FileHandleOps for FileHandle<'_> {
         .map_err(FileAttrError::JoinFailedBug)?
         .map_err(FileAttrError::SetXattrFailed)?)
     }
-
-    async fn metadata(&mut self) -> Result<FileMetadata, BoxError> {
-        let metadata = self.file.metadata().await?;
-        Ok(FileMetadata {
-            size: metadata.len(),
-        })
-    }
 }
 
-impl AsyncSeek for FileHandle<'_> {
+impl AsyncSeek for FileHandle {
     fn start_seek(self: std::pin::Pin<&mut Self>, position: SeekFrom) -> std::io::Result<()> {
         AsyncSeek::start_seek(self.project().file, position)
     }
@@ -224,7 +217,7 @@ impl AsyncSeek for FileHandle<'_> {
     }
 }
 
-impl AsyncRead for FileHandle<'_> {
+impl AsyncRead for FileHandle {
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -244,7 +237,7 @@ enum FilePathError {
     InvalidChar,
 }
 
-impl FileHandle<'_> {
+impl FileHandle {
     /// "Sanitizes" a file path, mostly just by removing blatantly illegal
     /// contents from it. Other than that it's Unix, whatever, it can deal with
     /// pretty nonsense file names that are valid UTF-8.
@@ -268,13 +261,11 @@ impl FileHandle<'_> {
 #[derive(Debug, thiserror::Error)]
 enum FileBucketError {
     #[error("error calling openat: {0}")]
-    OpenatFailed(Errno),
+    Openat(Errno),
     #[error("error calling fcntl_dupfd_cloexec: {0}")]
-    DupFailed(Errno),
+    Dup(Errno),
     #[error("error calling fstat: {0}")]
-    FstatFailed(Errno),
-    #[error("invalid file name {0:?}: {1}")]
-    BadFileName(String, FilePathError),
+    Fstat(Errno),
 }
 
 impl From<FileBucketError> for FileOpenError {
@@ -291,7 +282,7 @@ impl From<FileBucketError> for FileCreateError {
 
 #[async_trait]
 impl Bucket for FileBucket {
-    type FileHandle<'a> = FileHandle<'a>;
+    type FileHandle = FileHandle;
 
     // We implement the file opening as openat so that we don't have to do path
     // joins, mostly. This does mean it is less rusty though...
@@ -303,9 +294,9 @@ impl Bucket for FileBucket {
 
     #[tracing::instrument(level = "debug")]
     #[must_use]
-    async fn file(&self, file_name: &str) -> Result<Self::FileHandle<'_>, FileOpenError> {
+    async fn file(&self, file_name: &str) -> Result<Self::FileHandle, FileOpenError> {
         let path = FileHandle::make_acceptable_filepath(Utf8Path::new(file_name))
-            .map_err(|e| FileBucketError::BadFileName(file_name.to_owned(), e))?;
+            .map_err(|_| FileOpenError::InvalidName)?;
 
         let result = rustix::fs::openat(
             &self.dirfd,
@@ -317,13 +308,13 @@ impl Bucket for FileBucket {
         let handle = match result {
             Ok(handle) => handle,
             Err(Errno::NOENT) => Err(FileOpenError::DoesNotExist)?,
-            Err(err) => Err(FileBucketError::OpenatFailed(err))?,
+            Err(err) => Err(FileBucketError::Openat(err))?,
         };
 
-        let stat = rustix::fs::fstat(&handle).map_err(FileBucketError::FstatFailed)?;
+        let stat = rustix::fs::fstat(&handle).map_err(FileBucketError::Fstat)?;
         let lock = self.lock_pool.lock(Inode(stat.st_ino)).await;
         let file_for_xattrs =
-            Arc::new(XattrsFd::from_dup_fd(&handle).map_err(FileBucketError::DupFailed)?);
+            Arc::new(XattrsFd::from_dup_fd(&handle).map_err(FileBucketError::Dup)?);
 
         Ok(Self::FileHandle {
             // SAFETY: this is an owned open fd
@@ -335,9 +326,9 @@ impl Bucket for FileBucket {
 
     #[tracing::instrument(level = "debug")]
     #[must_use]
-    async fn create_file(&self, file_name: &str) -> Result<Self::FileHandle<'_>, FileCreateError> {
+    async fn create_file(&self, file_name: &str) -> Result<Self::FileHandle, FileCreateError> {
         let path = FileHandle::make_acceptable_filepath(Utf8Path::new(file_name))
-            .map_err(|e| FileBucketError::BadFileName(file_name.to_owned(), e))?;
+            .map_err(|_| FileCreateError::InvalidName)?;
 
         let result = rustix::fs::openat(
             &self.dirfd,
@@ -356,13 +347,13 @@ impl Bucket for FileBucket {
         let handle = match result {
             Ok(handle) => handle,
             Err(Errno::EXIST) => Err(FileCreateError::FileExists)?,
-            Err(err) => Err(FileBucketError::OpenatFailed(err))?,
+            Err(err) => Err(FileBucketError::Openat(err))?,
         };
 
-        let stat = rustix::fs::fstat(&handle).map_err(FileBucketError::FstatFailed)?;
+        let stat = rustix::fs::fstat(&handle).map_err(FileBucketError::Fstat)?;
         let lock = self.lock_pool.lock(Inode(stat.st_ino)).await;
         let file_for_xattrs =
-            Arc::new(XattrsFd::from_dup_fd(&handle).map_err(FileBucketError::DupFailed)?);
+            Arc::new(XattrsFd::from_dup_fd(&handle).map_err(FileBucketError::Dup)?);
 
         Ok(Self::FileHandle {
             // SAFETY: this is an owned open fd
@@ -544,17 +535,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_metadata() -> Result<(), BoxError> {
-        let backend = TempFileBackend::new_with_bucket("test_open_same_file_concurrency").await?;
+    async fn test_position() -> Result<(), BoxError> {
+        let backend = TempFileBackend::new_with_bucket("test_position").await?;
         let bucket = backend.bucket("bucket").await?;
         let mut handle1 = bucket.create_file("meow").await?;
 
-        let FileMetadata { size } = handle1.metadata().await?;
+        let size = handle1.seek(SeekFrom::End(0)).await?;
         assert_eq!(size, 0);
 
         handle1.append(b"meow").await?;
 
-        let FileMetadata { size } = handle1.metadata().await?;
+        let size = handle1.seek(SeekFrom::End(0)).await?;
         assert_eq!(size, 4);
         Ok(())
     }
