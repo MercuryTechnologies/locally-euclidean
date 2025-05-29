@@ -52,17 +52,16 @@ async fn put_write_filename() -> Result<(), BoxError> {
 }
 
 #[tokio::test]
-#[ignore = "TODO implement"]
 async fn post_append_filename() -> Result<(), BoxError> {
     let f = Fixture::new()?;
     // Can't append to a file that doesn't exist
     let resp = f
         .server
-        .post("/v0/append/meowmeow?bucketName=my_bucket")
+        .post("/v0/append/meowmeow?bucketName=my_bucket&writeOffset=0")
         .text("meow!")
         .expect_failure()
         .await;
-    resp.assert_text("Bucket does not exist: \"my_bucket\"");
+    resp.assert_text("File does not exist: \"meowmeow\"");
     resp.assert_status_not_found();
 
     // Appending to a file that exists works

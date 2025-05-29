@@ -26,6 +26,12 @@ pub enum FileCreateError {
     OtherError(BoxError),
 }
 
+/// File metadata.
+pub struct FileMetadata {
+    /// When the file was last modified, according to the system.
+    pub last_modified_at: time::UtcDateTime,
+}
+
 /// Operations allowed on a file handle
 #[async_trait]
 pub trait FileHandleOps: AsyncRead + AsyncSeek {
@@ -40,6 +46,10 @@ pub trait FileHandleOps: AsyncRead + AsyncSeek {
 
     /// Sets an attribute on a file handle by name.
     async fn set_attr(&mut self, attr: &str, value: &str) -> Result<(), BoxError>;
+
+    /// Retrieves some common metadata on a file. Currently this is just
+    /// modification time.
+    async fn metadata(&mut self) -> Result<FileMetadata, BoxError>;
 }
 
 /// Storage backend for locally-euclidean.

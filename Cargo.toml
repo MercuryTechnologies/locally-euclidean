@@ -13,6 +13,8 @@ async-trait = "0.1.88"
 pin-project = "1.1.10"
 serde = { version = "1.0.219", features = ["derive"] }
 config = { version = "0.15.11", features = ["toml"], default-features = false }
+tokio-util = { version = "0.7.15", features = ["tracing"] }
+time = { version = "0.3.41", features = ["formatting"] }
 
 # Unix
 rustix = "1.0.7"

@@ -12,6 +12,7 @@ camino.workspace = true
 pin-project.workspace = true
 xattr.workspace = true
 tracing.workspace = true
+time.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -1613,6 +1613,7 @@ dependencies = [
  "axum-tracing-opentelemetry",
  "config",
  "http-body-util",
+ "httpdate",
  "init-tracing-opentelemetry",
  "opentelemetry",
  "opentelemetry_sdk",
@@ -1622,6 +1623,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
+ "tokio-util",
  "tower 0.5.2",
  "tower-http",
  "tower-service",
@@ -1696,6 +1698,7 @@ dependencies = [
  "rustix",
  "tempfile",
  "thiserror",
+ "time",
  "tokio",
  "tracing",
  "xattr",
@@ -1898,6 +1901,7 @@ dependencies = [
  "futures-sink",
  "pin-project-lite",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
