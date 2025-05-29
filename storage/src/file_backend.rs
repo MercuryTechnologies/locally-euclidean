@@ -595,6 +595,9 @@ mod tests {
             "no modification means the time does not change"
         );
 
+        // Delay to try to ensure that the timestamps on the file are different
+        // within the filesystem time precision.
+        tokio::time::sleep(Duration::from_millis(100)).await;
         let metadata3;
         {
             let mut handle = bucket.file("meow").await?;
