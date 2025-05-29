@@ -44,6 +44,7 @@ pub fn make_app(state: AppState) -> axum::Router {
             get(|| async { "This is https://github.com/MercuryTechnologies/locally-euclidean" }),
         )
         .nest("/v0", api::make_router())
+        .nest("/v1/logs", api::make_buck2_logs_router())
         .nest("/explore", explore::make_router())
         .layer(
             // Process middleware requests top to bottom then responses are
@@ -58,7 +59,7 @@ pub fn make_app(state: AppState) -> axum::Router {
                 // Include trace context as header into the response
                 .layer(OtelInResponseLayer)
                 .layer(security_headers::cors())
-                .layer(axum::middleware::from_fn(security_headers::headers)),
+                .layer(axum::middleware::map_response(security_headers::headers)),
         )
         .with_state(state)
         // Processed *outside* span

@@ -347,7 +347,6 @@ impl Bucket for FileBucket {
     // tokio punts it to spawn_blocking anyway.
 
     #[tracing::instrument(level = "debug")]
-    #[must_use]
     async fn file(&self, file_name: &str) -> Result<Self::FileHandle, FileOpenError> {
         let path = FileHandle::make_acceptable_filepath(Utf8Path::new(file_name))
             .map_err(|_| FileOpenError::InvalidName)?;
@@ -375,7 +374,6 @@ impl Bucket for FileBucket {
     }
 
     #[tracing::instrument(level = "debug")]
-    #[must_use]
     async fn create_file(&self, file_name: &str) -> Result<Self::FileHandle, FileCreateError> {
         let path = FileHandle::make_acceptable_filepath(Utf8Path::new(file_name))
             .map_err(|_| FileCreateError::InvalidName)?;
@@ -439,7 +437,6 @@ impl StorageBackend for FileBackend {
     type Bucket<'a> = Arc<FileBucket>;
 
     #[tracing::instrument(level = "debug", skip(self))]
-    #[must_use]
     async fn bucket(&self, name: &str) -> Result<Self::Bucket<'_>, FileOpenError> {
         // These would constitute path traversal bugs when combined with
         // PathBuf::join
@@ -465,7 +462,6 @@ impl StorageBackend for FileBackend {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    #[must_use]
     async fn list_buckets(&self) -> Result<Vec<String>, BoxError> {
         let mut iter = tokio::fs::read_dir(&self.root_dir).await?;
         let mut names = Vec::new();

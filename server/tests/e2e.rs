@@ -5,21 +5,27 @@ use server::{AppStateInner, config::AppConfig, make_app};
 
 /// Set-up for a test with isolated storage directory
 struct Fixture {
-    _temp_dir: tempfile::TempDir,
+    temp_dir: tempfile::TempDir,
     server: TestServer,
 }
 
 impl Fixture {
-    fn new() -> Result<Fixture, BoxError> {
-        let (temp_dir, config) = AppConfig::build_for_test()?;
+    pub fn create_bucket(&self, name: &str) -> Result<(), BoxError> {
         // Create one bucket
-        std::fs::create_dir(temp_dir.path().join("my_bucket"))?;
+        std::fs::create_dir(self.temp_dir.path().join(name))?;
+        Ok(())
+    }
+
+    pub fn new() -> Result<Fixture, BoxError> {
+        let (temp_dir, config) = AppConfig::build_for_test()?;
 
         let app = make_app(AppStateInner::new(config));
-        Ok(Fixture {
-            _temp_dir: temp_dir,
+        let fixture = Fixture {
+            temp_dir,
             server: TestServer::new(app)?,
-        })
+        };
+        fixture.create_bucket("my_bucket")?;
+        Ok(fixture)
     }
 }
 
@@ -81,6 +87,22 @@ async fn post_append_filename() -> Result<(), BoxError> {
         .expect_success()
         .await
         .assert_text("meow!meow!");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn get_buck2_log() -> Result<(), BoxError> {
+    let f = Fixture::new()?;
+    f.create_bucket("buck2_logs")?;
+    f.server
+        .put("/v0/write/flat/abcde.pb.zst?bucketName=buck2_logs")
+        .text("meow!")
+        .expect_success()
+        .await;
+
+    let resp = f.server.get("/v1/logs/get/abcde").expect_success().await;
+    resp.assert_text("meow!");
 
     Ok(())
 }

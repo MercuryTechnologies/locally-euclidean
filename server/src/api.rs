@@ -6,10 +6,11 @@ use std::{
 };
 
 use axum::{
-    body::Bytes,
+    body::{Body, Bytes},
     extract,
     http::StatusCode,
-    routing::{post, put},
+    response::Response,
+    routing::{get, post, put},
 };
 use http_body_util::BodyExt;
 use storage::{Bucket, FileCreateError, FileHandleOps, FileOpenError, StorageBackend};
@@ -19,12 +20,19 @@ use tokio::{
 };
 use tokio_stream::{Stream, StreamExt};
 
-use crate::{AppState, errors::ServiceError, service_error};
+use crate::{AppState, errors::ServiceError, explore, service_error};
 
 pub fn make_router() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/write/{*filename}", put(put_write_filename))
         .route("/append/{*filename}", post(post_append_filename))
+}
+
+/// Makes the router for `/v1`, which is buck2-specific functionality.
+///
+/// See: <https://github.com/facebook/buck2/pull/770>
+pub fn make_buck2_logs_router() -> axum::Router<AppState> {
+    axum::Router::new().route("/get/{filename}", get(get_buck2_log))
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -281,6 +289,18 @@ async fn post_append_filename(
     }
 
     Ok(())
+}
+
+#[tracing::instrument(level = "info", skip(state))]
+async fn get_buck2_log(
+    state: extract::State<AppState>,
+    extract::Path(filename): extract::Path<String>,
+) -> Result<Response<Body>, ApiError> {
+    explore::get_explore(
+        state,
+        extract::Path(("buck2_logs".to_owned(), format!("flat/{filename}.pb.zst"))),
+    )
+    .await
 }
 
 #[cfg(test)]

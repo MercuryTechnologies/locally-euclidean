@@ -33,7 +33,7 @@ pub fn make_router() -> axum::Router<AppState> {
 const BUFFER_SIZE: u64 = 64 * 1024;
 
 #[tracing::instrument(level = "info", skip(state))]
-async fn get_explore(
+pub(crate) async fn get_explore(
     state: extract::State<AppState>,
     extract::Path((bucket, filename)): extract::Path<(String, String)>,
 ) -> Result<Response<Body>, ApiError> {
