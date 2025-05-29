@@ -4,11 +4,7 @@
 //! uploading HTML.
 //!
 //! FIXME(jadel): find more fun headers to set
-use axum::{
-    http::{HeaderValue, header},
-    middleware::Next,
-    response::Response,
-};
+use axum::http::{HeaderValue, header};
 use tower_http::cors::CorsLayer;
 
 const DEFAULT_HEADERS: [(header::HeaderName, HeaderValue); 4] = [
@@ -27,8 +23,9 @@ const DEFAULT_HEADERS: [(header::HeaderName, HeaderValue); 4] = [
     ),
 ];
 
-pub(crate) async fn headers(request: axum::extract::Request, next: Next) -> Response {
-    let mut response = next.run(request).await;
+pub(crate) async fn headers<Body>(
+    mut response: axum::response::Response<Body>,
+) -> axum::response::Response<Body> {
     let headers = response.headers_mut();
     for (name, value) in DEFAULT_HEADERS {
         headers.entry(name).or_insert(value);
