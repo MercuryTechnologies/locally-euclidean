@@ -7,6 +7,9 @@
   inputs,
   rustPlatform,
   rust-analyzer,
+  sqlx-cli,
+  process-compose,
+  postgresql,
 }:
 let
   src = lib.cleanSourceWith {
@@ -25,6 +28,8 @@ let
 
   commonArgs = commonArgs' // {
     inherit cargoArtifacts;
+    # We need postgres for various db stuff in tests.
+    nativeBuildInputs = [ postgresql ];
   };
 
   # XXX: This is a Big Hammer workaround for Lix not supporting xattr usage in
@@ -104,6 +109,8 @@ let
     # Extra development tools (cargo and rustc are included by default).
     packages = [
       rust-analyzer
+      sqlx-cli
+      process-compose
     ];
   };
 in
