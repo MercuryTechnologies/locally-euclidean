@@ -1,0 +1,11 @@
+[advisories]
+ignore = [
+    # Triggered by a dependency on sqlx-mysql (which we don't use) due to
+    # sqlx-macros-core not putting db backends behind features (????).
+    #
+    # The advisory seems to be basically "lol it's written in rust", unfixed
+    # due to $reasons, and the fix is to run crypto written in C that is a pain
+    # to deploy.
+    # https://github.com/RustCrypto/RSA/security/advisories/GHSA-c38w-74pg-36hr
+    "RUSTSEC-2023-0071"
+]

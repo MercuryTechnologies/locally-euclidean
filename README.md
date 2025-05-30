@@ -31,15 +31,15 @@ The goals of this service are:
   * Auth is delegated to the proxy, intended to be deployed behind e.g. Tailscale; we do not need to keep these extremely secret
   * Everything in this service is expected to be garbage-collected after a period of time, durability is not that important
 * Small scale: it will survive a terabyte of data without any rework, past that we should consider spending a couple days writing a better solution for that
-* Runs On A Computer: minimal dependencies, just store the blobs on the filesystem
-  * Does not require managing a database or the possibility to desync with said database: uses xattrs for file metadata
-  * Deleting old data is delegated to the filesystem via e.g. systemd-tmpfiles
+* Runs On A Computer: just needs a postgres, which contains all mutable data including file blobs.
 
 For the reasons of quickness of writing it and the goals of not having to touch it much later, it's written in Rust.
 
 ## Functionality
 
 Buckets are statically defined (TODO: configuration mechanism?), and are directories.
+
+TODO: this must change for postgres backend.
 
 ### PUT `/v0/write/:filename?bucketName=:bucketName`
 
@@ -87,3 +87,27 @@ This shows the file at the given path to the browser with the `Content-Type` giv
   Alternatively we could use directories for each file and write it as parts;
   that seems simply worse however. Overall this is a reminder that all of this
   stuff is really hard.
+
+# Development
+
+This is a pretty normal Rust project with the exception of oddities relating to sqlx.
+If you have a local cargo toolchain it will just work, modulo needing to have a database.
+
+There's a nix and nix-direnv environment provisioned for you, which you can activate with `direnv allow`.
+
+sqlx verifies SQL queries at build time using the `DATABASE_URL` environment variable, the results of which are cached in `.sqlx/` via `cargo sqlx prepare --workspace`.
+
+If you don't want to use a system postgres, the `.envrc` is configured by default to let you use `process-compose up` to start a project-specific postgres server and automatically configure it.
+
+Since we use this caching feature, nix builds do not need a postgres *in the cargo build itself* and can just use temp-postgres for tests.
+
+## Database stuff
+
+You can use the sqlx tools to do migration development:
+
+- **Wipe DB** and run migrations: `sqlx database reset`
+- Create a migration: `sqlx migrate add 'initial schema'`
+
+**Currently** (this would be bad practice if the app were larger), migrations are run on application startup and no effort is made to prevent blowing up prod with this.
+
+Don't write migrations that break back-compat for the prior version of the app.
