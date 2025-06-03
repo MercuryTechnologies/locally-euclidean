@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select lowrite($1, $2)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "lowrite",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c903710e726e380abac04aeca055d56a5ed4c705e24e2c7268380036109d36c8"
+}

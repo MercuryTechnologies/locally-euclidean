@@ -2,6 +2,7 @@ pub mod file_backend;
 pub mod postgres;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use std::ops::Deref;
 use tokio::io::{AsyncRead, AsyncSeek};
 
@@ -30,7 +31,7 @@ pub enum FileCreateError {
 /// File metadata.
 pub struct FileMetadata {
     /// When the file was last modified, according to the system.
-    pub last_modified_at: time::UtcDateTime,
+    pub last_modified_at: chrono::DateTime<Utc>,
 }
 
 /// Operations allowed on a file handle
@@ -41,16 +42,12 @@ pub trait FileHandleOps: AsyncRead + AsyncSeek {
     /// This does not implement the API semantics of checking if the range matches, that's left to a higher level.
     async fn append(&mut self, data: &[u8]) -> Result<(), BoxError>;
 
-    /// Gets an attribute on a file handle by name. Returns `Ok(None)` if the
-    /// attribute is not present.
-    async fn get_attr(&mut self, attr: &str) -> Result<Option<String>, BoxError>;
-
-    /// Sets an attribute on a file handle by name.
-    async fn set_attr(&mut self, attr: &str, value: &str) -> Result<(), BoxError>;
-
     /// Retrieves some common metadata on a file. Currently this is just
     /// modification time.
     async fn metadata(&mut self) -> Result<FileMetadata, BoxError>;
+
+    /// Commits the changes to the file handle to storage.
+    async fn commit(self) -> Result<(), BoxError>;
 }
 
 /// Storage backend for locally-euclidean.

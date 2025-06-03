@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select name from buckets",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "2d4e77bbc95886020e60fce9de5e6d0ba35526e02b03de12aa015216a2c7a09e"
+}

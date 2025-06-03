@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id as \"id: BucketId\", default_ttl from buckets where name = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id: BucketId",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "default_ttl",
+        "type_info": "Interval"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "d24ce34597f5e423ae23400e1a4fbba6059af44186de7e363f7ff3ea6cdc4793"
+}

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select lo_close($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "lo_close",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "82e2f2fdd9c69819f74e0859d831670a8780d1536f7192edc228e4ebf3daaaf9"
+}

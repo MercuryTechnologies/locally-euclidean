@@ -2,7 +2,7 @@ is_strict: true
 processes:
   postgres:
     availability:
-      restart: false
+      restart: no
     command: exec ./scripts/start-db.sh
     log_configuration:
       disable_json: true
@@ -22,8 +22,7 @@ processes:
       signal: 2
   postgres_init:
     availability:
-      restart:
-        false
+      restart: no
     command: exec ./scripts/setup-db.sh
     log_configuration:
       disable_json: true

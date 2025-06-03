@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select lo_lseek64($1, $2, $3)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "lo_lseek64",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int8",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "688b113d346d8de4f63626a50327fde372a19562179376c64d251c36b626ab27"
+}

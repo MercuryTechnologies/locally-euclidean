@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select lo_open($1, $2)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "lo_open",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Oid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "78c5ee0eee91c2bf8289d65631f4c44be3e6857e71ac250b27ec2c5c9b6995a3"
+}

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select id as \"id: FileId\", blob from files where bucket_id = $1 and filename = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id: FileId",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "blob",
+        "type_info": "Oid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "99fd03b5d6c819ca6cbc8a0b5984b0551995432b42f3dd013cc02be796557305"
+}
