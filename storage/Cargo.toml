@@ -12,9 +12,13 @@ camino.workspace = true
 pin-project.workspace = true
 xattr.workspace = true
 tracing.workspace = true
-time.workspace = true
+chrono.workspace = true
 sqlx.workspace = true
 tmp-postgrust.workspace = true
+futures-core.workspace = true
+# used for three u32 Whence constants >_>
+nix.workspace = true
+assert-impl.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

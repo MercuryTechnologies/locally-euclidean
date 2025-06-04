@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select loread($1, $2)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "loread",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "39469e0f4964bcb8dd87fed10157d652ce9e578aba9a51a3afe0a4f626ac3fca"
+}

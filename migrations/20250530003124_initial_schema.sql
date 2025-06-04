@@ -30,6 +30,8 @@ create table buckets (
 
 comment on column buckets.default_ttl is 'Default time to delete data in this bucket, used if not provided by a client';
 
+create unique index on buckets (name);
+
 create trigger buckets_insert
   before insert
   on buckets
@@ -44,7 +46,7 @@ execute procedure update_timestamps();
 
 create table files (
     id uuid primary key not null default gen_random_uuid(),
-    bucket uuid not null references buckets(id),
+    bucket_id uuid not null references buckets(id),
     filename text not null,
     blob lo not null,
     delete_after timestamp with time zone,
@@ -59,8 +61,8 @@ comment on column files.delete_after is 'Time after which this blob can be garba
 create trigger files_delete before update or delete on files
     for each row execute function lo_manage(blob);
 
-create index on files (bucket);
-create unique index on files (bucket, filename);
+create index on files (bucket_id);
+create unique index on files (bucket_id, filename);
 -- Used for fast deletion of old files
 create index on files (delete_after);
 

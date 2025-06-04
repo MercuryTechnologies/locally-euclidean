@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "insert into files (bucket_id, filename, delete_after, blob) values ($1, $2, $3, lo_create(0)) returning id as \"id: FileId\", blob",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id: FileId",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "blob",
+        "type_info": "Oid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "4bb569f3fcdb44ee0c27b024db9571d5967548acf980a8cd22e42f58b215f91b"
+}

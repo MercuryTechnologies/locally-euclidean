@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "select updated_at from files where id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "05951ad3448c953f5c84f105171054d1f08b92fd8f2cfeb640dc5f19c3e61fde"
+}

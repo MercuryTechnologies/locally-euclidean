@@ -181,37 +181,6 @@ impl FileHandleOps for FileHandle {
     }
 
     #[tracing::instrument(level = "debug")]
-    async fn get_attr(&mut self, attr: &str) -> Result<Option<String>, BoxError> {
-        let file_for_xattrs = self.file_for_xattrs.clone();
-        let attr_name = xattr_name(attr);
-
-        match tokio::task::spawn_blocking(move || file_for_xattrs.get_xattr(attr_name))
-            .await
-            .map_err(FileAttrError::JoinFailedBug)?
-            .map_err(FileAttrError::GetXattrFailed)?
-        {
-            Some(v) => Ok(Some(
-                String::from_utf8(v).map_err(FileAttrError::InvalidUtf8)?,
-            )),
-            None => Ok(None),
-        }
-    }
-
-    #[tracing::instrument(level = "debug")]
-    async fn set_attr(&mut self, attr: &str, value: &str) -> Result<(), BoxError> {
-        let file_for_attrs = self.file_for_xattrs.clone();
-        let attr_name = xattr_name(attr);
-        let value = value.to_owned();
-
-        Ok(tokio::task::spawn_blocking(move || {
-            file_for_attrs.set_xattr(attr_name, value.as_bytes())
-        })
-        .await
-        .map_err(FileAttrError::JoinFailedBug)?
-        .map_err(FileAttrError::SetXattrFailed)?)
-    }
-
-    #[tracing::instrument(level = "debug")]
     async fn metadata(&mut self) -> Result<FileMetadata, BoxError> {
         let metadata = self
             .file
@@ -225,6 +194,12 @@ impl FileHandleOps for FileHandle {
                 .expect("we only run on platforms that provide this")
                 .into(),
         })
+    }
+
+    async fn commit(mut self) -> Result<(), BoxError> {
+        // Need not do anything (fsync exists, but the point is to make the
+        // changes visible to the application).
+        Ok(())
     }
 }
 
@@ -279,6 +254,40 @@ impl FileHandle {
                 Utf8Component::Normal(part) => Ok(part),
             })
             .collect::<Result<Utf8PathBuf, _>>()
+    }
+
+    /// Gets an attribute on a file handle by name. Returns `Ok(None)` if the
+    /// attribute is not present.
+    #[tracing::instrument(level = "debug")]
+    pub async fn get_attr(&mut self, attr: &str) -> Result<Option<String>, BoxError> {
+        let file_for_xattrs = self.file_for_xattrs.clone();
+        let attr_name = xattr_name(attr);
+
+        match tokio::task::spawn_blocking(move || file_for_xattrs.get_xattr(attr_name))
+            .await
+            .map_err(FileAttrError::JoinFailedBug)?
+            .map_err(FileAttrError::GetXattrFailed)?
+        {
+            Some(v) => Ok(Some(
+                String::from_utf8(v).map_err(FileAttrError::InvalidUtf8)?,
+            )),
+            None => Ok(None),
+        }
+    }
+
+    /// Sets an attribute on a file handle by name.
+    #[tracing::instrument(level = "debug")]
+    pub async fn set_attr(&mut self, attr: &str, value: &str) -> Result<(), BoxError> {
+        let file_for_attrs = self.file_for_xattrs.clone();
+        let attr_name = xattr_name(attr);
+        let value = value.to_owned();
+
+        Ok(tokio::task::spawn_blocking(move || {
+            file_for_attrs.set_xattr(attr_name, value.as_bytes())
+        })
+        .await
+        .map_err(FileAttrError::JoinFailedBug)?
+        .map_err(FileAttrError::SetXattrFailed)?)
     }
 }
 

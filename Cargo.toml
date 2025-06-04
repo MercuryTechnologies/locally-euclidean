@@ -14,13 +14,16 @@ pin-project = "1.1.10"
 serde = { version = "1.0.219", features = ["derive"] }
 config = { version = "0.15.11", features = ["toml"], default-features = false }
 tokio-util = { version = "0.7.15", features = ["tracing"] }
-time = { version = "0.3.41", features = ["formatting"] }
+chrono = "0.4.41"
+futures-core = "0.3.31"
+assert-impl = "0.1.3"
 
 # Unix
 rustix = "1.0.7"
 tempfile = "3.20.0"
 camino = "1.1.9"
 xattr = { version = "1.5.0", default-features = false }
+nix = { version = "0.26.4", features = ["fs"] }
 
 # OTel
 axum-tracing-opentelemetry = "0.28.0"
@@ -41,5 +44,5 @@ http-body-util = "0.1.3"
 tokio-stream = "0.1.17"
 
 # Database
-sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio", "tls-rustls", "migrate"] }
+sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio", "tls-rustls", "migrate", "uuid", "chrono"] }
 tmp-postgrust = { version = "0.9.0", features = ["tokio", "tokio-process"] }
