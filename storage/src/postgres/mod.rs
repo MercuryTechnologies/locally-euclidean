@@ -21,11 +21,13 @@ use sqlx::error::Error as SqlxError;
 use sqlx::error::ErrorKind as SqlxErrorKind;
 use sqlx::postgres::types::Oid;
 use sqlx::{Execute, PgPool, types::Uuid};
-use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
 
 use crate::StorageBackend;
 use crate::{BoxError, Bucket, FileCreateError, FileHandleOps, FileMetadata, FileOpenError};
-use blob::{BlobHandle, FileHandleError};
+use blob::BlobHandle;
+
+pub use blob::FileHandleError;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../migrations");
 
@@ -82,6 +84,9 @@ impl AsyncSeek for PostgresFileHandle {
 
 // We intentionally don't implement AsyncWrite here since we don't *want* to
 // offer generalized non-append writes.
+fn _assert_impl() {
+    assert_impl::assert_impl!(!AsyncWrite: PostgresFileHandle);
+}
 
 #[async_trait]
 impl FileHandleOps for PostgresFileHandle {
@@ -127,30 +132,6 @@ pub struct PostgresBucket {
 pub enum BucketError {
     #[error("Failed bucket query {0:?}: {1}")]
     QueryFailed(String, sqlx::Error),
-}
-
-impl From<FileHandleError> for FileCreateError {
-    fn from(value: FileHandleError) -> Self {
-        Self::OtherError(value.into())
-    }
-}
-
-impl From<BucketError> for FileCreateError {
-    fn from(value: BucketError) -> Self {
-        Self::OtherError(value.into())
-    }
-}
-
-impl From<FileHandleError> for FileOpenError {
-    fn from(value: FileHandleError) -> Self {
-        Self::OtherError(value.into())
-    }
-}
-
-impl From<BucketError> for FileOpenError {
-    fn from(value: BucketError) -> Self {
-        Self::OtherError(value.into())
-    }
 }
 
 impl PostgresBucket {

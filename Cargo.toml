@@ -16,12 +16,14 @@ config = { version = "0.15.11", features = ["toml"], default-features = false }
 tokio-util = { version = "0.7.15", features = ["tracing"] }
 chrono = "0.4.41"
 futures-core = "0.3.31"
+assert-impl = "0.1.3"
 
 # Unix
 rustix = "1.0.7"
 tempfile = "3.20.0"
 camino = "1.1.9"
 xattr = { version = "1.5.0", default-features = false }
+nix = { version = "0.26.4", features = ["fs"] }
 
 # OTel
 axum-tracing-opentelemetry = "0.28.0"

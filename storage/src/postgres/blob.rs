@@ -9,6 +9,7 @@ use std::{
 };
 
 use futures_core::future::BoxFuture;
+use nix::unistd::Whence;
 use sqlx::{Execute, PgPool, PgTransaction, postgres::types::Oid};
 use tokio::sync::Mutex as TokioMutex;
 use tokio::{
@@ -31,8 +32,8 @@ struct BlobHandleInner {
 /// The state that a tokio-compatible file handle is in.
 ///
 /// It can only be in one state at once, and cancellation can mean that
-/// AsyncRead could be interrupted and then the handle is used to do an
-/// AsyncSeek or whatever. We don't support that and simply panic about it.
+/// [`AsyncRead`] could be interrupted and then the handle is used to do an
+/// [`AsyncSeek`] or whatever. We don't support that and simply panic about it.
 #[non_exhaustive]
 enum FileHandleState {
     Reading(BoxFuture<'static, Result<Vec<u8>, FileHandleError>>),
@@ -284,12 +285,6 @@ impl AsyncWrite for BlobHandle {
     }
 }
 
-// Taken from Linux headers; why did Postgres think these were safe as network
-// ABI?
-const SEEK_SET: i32 = 0;
-const SEEK_CUR: i32 = 1;
-const SEEK_END: i32 = 2;
-
 #[derive(Debug, thiserror::Error)]
 pub enum FileHandleError {
     #[error("Failed file handle query {0:?}: {1}")]
@@ -349,10 +344,11 @@ impl BlobHandleInner {
     /// Seeks to the given position in a file.
     async fn lseek64(&mut self, seek: SeekFrom) -> Result<i64, FileHandleError> {
         let (n, whence) = match seek {
-            SeekFrom::Start(n) => (n as i64, SEEK_SET),
-            SeekFrom::Current(n) => (n, SEEK_CUR),
-            SeekFrom::End(n) => (n, SEEK_END),
+            SeekFrom::Start(n) => (n as i64, Whence::SeekSet),
+            SeekFrom::Current(n) => (n, Whence::SeekCur),
+            SeekFrom::End(n) => (n, Whence::SeekEnd),
         };
+        let whence = whence as i32;
 
         let query = sqlx::query!("select lo_lseek64($1, $2, $3)", self.fd_num, n, whence);
         let sql = query.sql();

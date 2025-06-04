@@ -18,6 +18,18 @@ pub enum FileOpenError {
     OtherError(BoxError),
 }
 
+impl From<postgres::FileHandleError> for FileOpenError {
+    fn from(value: postgres::FileHandleError) -> Self {
+        Self::OtherError(value.into())
+    }
+}
+
+impl From<postgres::BucketError> for FileOpenError {
+    fn from(value: postgres::BucketError) -> Self {
+        Self::OtherError(value.into())
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum FileCreateError {
     #[error("File exists")]
@@ -26,6 +38,18 @@ pub enum FileCreateError {
     InvalidName,
     #[error("Unknown file create error: {0}")]
     OtherError(BoxError),
+}
+
+impl From<postgres::FileHandleError> for FileCreateError {
+    fn from(value: postgres::FileHandleError) -> Self {
+        Self::OtherError(value.into())
+    }
+}
+
+impl From<postgres::BucketError> for FileCreateError {
+    fn from(value: postgres::BucketError) -> Self {
+        Self::OtherError(value.into())
+    }
 }
 
 /// File metadata.
