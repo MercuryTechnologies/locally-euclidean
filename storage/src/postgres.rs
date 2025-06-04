@@ -53,7 +53,7 @@ pub mod testing {
     impl Fixture {
         pub async fn new() -> Result<Fixture, BoxError> {
             // This is a workaround for a bug in tmp_postgrust where the
-            // migraitons are run in a synchronous callback from an async
+            // migrations are run in a synchronous callback from an async
             // thread.
             //
             // The solution to this is, erm, to run the async migrations as a
