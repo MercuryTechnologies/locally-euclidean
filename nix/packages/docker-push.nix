@@ -14,8 +14,18 @@ writeShellApplication {
       exit 1
     fi
     registry_path=$1
-    # insecure-policy: we don't have any signature policy, we are just uploading an image
-    skopeo --insecure-policy copy --all docker-archive:${docker-image} "docker://$registry_path"
+    args=(
+      # insecure-policy: we don't have any signature policy, we are just uploading an image
+      --insecure-policy
+      copy
+      --all
+      docker-archive:${docker-image}
+      "docker://$registry_path"
+    )
+    if [[ -v $EXTRA_TAGS ]]; then
+      args+=(--additional-tag "$EXTRA_TAGS")
+    fi
+    skopeo "''${args[@]}"
   '';
   meta = {
     description = "Pushes the docker image to a registry";
