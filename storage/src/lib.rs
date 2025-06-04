@@ -1,4 +1,3 @@
-pub mod file_backend;
 pub mod postgres;
 
 use async_trait::async_trait;
