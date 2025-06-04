@@ -5,6 +5,11 @@ description = "locally-euclidean server"
 version.workspace = true
 edition.workspace = true
 
+# rename binary from "server" to "locally-euclidean"
+[[bin]]
+name = "locally-euclidean"
+path = "src/main.rs"
+
 [dependencies]
 tokio.workspace = true
 axum.workspace = true

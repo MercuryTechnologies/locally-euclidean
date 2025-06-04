@@ -1,0 +1,32 @@
+name: Push docker images
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  packages: write
+
+jobs:
+  docker-push:
+    name: Docker push
+    runs-on: [ ubuntu-latest ]
+    steps:
+      - uses: DeterminateSystems/nix-installer-action@21a544727d0c62386e78b4befe52d19ad12692e3 # v17
+        with:
+          diagnostic-endpoint: ''
+          # horrifying lmao, this line taken from https://github.com/lilyinstarlight/foosteros
+          source-url: 'https://install.lix.systems/lix/lix-installer-${{ fromJSON(''{"X64":"x86_64","X86":"i686","ARM64":"aarch64","ARM":"armv7l"}'')[runner.arch] }}-${{ fromJSON(''{"Linux":"linux","macOS":"darwin","Windows":"windows"}'')[runner.os] }}'
+      - name: Checkout
+        uses: MercuryTechnologies/checkout@08ead55e08cc04c3874286ec7dae85a79ada2cb9 # v4.2.1b
+      - name: Log into the registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Build
+        run: |
+          # accept-flake-config is not normally ok. it's still not great here,
+          # but putting code in our flake.nix is equivalent to this in this
+          # case anyway.
+          registry_path=$(echo "ghcr.io/${{ github.repository_owner }}/locally-euclidean:latest" | tr 'A-Z' 'a-z')
+          nix run -L --accept-flake-config .#docker-push "$registry_path"
+
