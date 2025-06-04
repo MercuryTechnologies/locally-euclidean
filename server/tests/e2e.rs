@@ -1,37 +1,51 @@
 //! End to end test of locally_euclidean
 use axum::BoxError;
 use axum_test::TestServer;
-use server::{AppStateInner, config::AppConfig, make_app};
+use chrono::TimeDelta;
+use server::{AppState, AppStateInner, config::AppConfig, make_app};
+use storage::{
+    FileCreateError,
+    postgres::{PostgresBucket, testing},
+};
 
-/// Set-up for a test with isolated storage directory
+/// Set-up for a test with isolated database
 struct Fixture {
-    temp_dir: tempfile::TempDir,
     server: TestServer,
+    state: AppState,
+    _guard: testing::Guard,
 }
 
 impl Fixture {
-    pub fn create_bucket(&self, name: &str) -> Result<(), BoxError> {
-        // Create one bucket
-        std::fs::create_dir(self.temp_dir.path().join(name))?;
-        Ok(())
+    pub async fn create_bucket(
+        &self,
+        name: &str,
+        default_ttl: Option<TimeDelta>,
+    ) -> Result<PostgresBucket, FileCreateError> {
+        PostgresBucket::create(self.state.pool.clone(), name, default_ttl).await
     }
 
-    pub fn new() -> Result<Fixture, BoxError> {
-        let (temp_dir, config) = AppConfig::build_for_test()?;
+    pub async fn new() -> Result<Fixture, BoxError> {
+        let config = AppConfig::build_for_test()?;
+        let storage_fixture = testing::Fixture::new().await?;
+        storage_fixture.create_bucket("my_bucket", None).await?;
 
-        let app = make_app(AppStateInner::new(config));
+        // Needs to be torn apart because of needing to be an AppState instead.
+        let testing::Fixture { backend, db } = storage_fixture;
+
+        let state = AppStateInner::with_backend_migrated(config, backend.pool.clone(), backend);
+        let app = make_app(state.clone());
         let fixture = Fixture {
-            temp_dir,
             server: TestServer::new(app)?,
+            state,
+            _guard: db,
         };
-        fixture.create_bucket("my_bucket")?;
         Ok(fixture)
     }
 }
 
 #[tokio::test]
 async fn put_write_filename() -> Result<(), BoxError> {
-    let f = Fixture::new()?;
+    let f = Fixture::new().await?;
     f.server
         .put("/v0/write/meowmeow?bucketName=my_bucket")
         .text("meow!")
@@ -59,7 +73,7 @@ async fn put_write_filename() -> Result<(), BoxError> {
 
 #[tokio::test]
 async fn post_append_filename() -> Result<(), BoxError> {
-    let f = Fixture::new()?;
+    let f = Fixture::new().await?;
     // Can't append to a file that doesn't exist
     let resp = f
         .server
@@ -93,8 +107,8 @@ async fn post_append_filename() -> Result<(), BoxError> {
 
 #[tokio::test]
 async fn get_buck2_log() -> Result<(), BoxError> {
-    let f = Fixture::new()?;
-    f.create_bucket("buck2_logs")?;
+    let f = Fixture::new().await?;
+    f.create_bucket("buck2_logs", None).await?;
     f.server
         .put("/v0/write/flat/abcde.pb.zst?bucketName=buck2_logs")
         .text("meow!")

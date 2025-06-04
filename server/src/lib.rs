@@ -11,22 +11,50 @@ use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer}
 
 use axum::routing::get;
 use config::AppConfig;
-use storage::file_backend::FileBackend;
+use sqlx::PgPool;
+use storage::postgres::PostgresBackend;
 use tower::ServiceBuilder;
 
 pub type AppState = Arc<AppStateInner>;
 
 pub struct AppStateInner {
     pub config: AppConfig,
-    pub store: FileBackend,
+    pub pool: PgPool,
+    pub store: PostgresBackend,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum AppStartupError {
+    #[error("Failed to connect to database: {0}")]
+    ConnectToDB(sqlx::Error),
+    #[error("Failed to run migrations: {0}")]
+    Migrate(sqlx::Error),
 }
 
 impl AppStateInner {
-    pub fn new(config: AppConfig) -> AppState {
+    /// Used for tests: start up the app with injected backend and database.
+    pub fn with_backend_migrated(
+        config: AppConfig,
+        pool: PgPool,
+        store: PostgresBackend,
+    ) -> AppState {
         Arc::new(AppStateInner {
-            store: FileBackend::new(config.file_storage_root.clone()),
+            store,
+            pool,
             config,
         })
+    }
+
+    /// Start up the app and migrate the DB.
+    pub async fn new(config: AppConfig) -> Result<AppState, AppStartupError> {
+        let pool = sqlx::PgPool::connect_lazy(&config.db_connection_string)
+            .map_err(AppStartupError::ConnectToDB)?;
+        PostgresBackend::migrate(pool.clone())
+            .await
+            .map_err(AppStartupError::Migrate)?;
+        let store = PostgresBackend::new(pool.clone());
+
+        Ok(Self::with_backend_migrated(config, pool, store))
     }
 }
 

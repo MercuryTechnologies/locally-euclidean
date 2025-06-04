@@ -1,9 +1,6 @@
 //! The Manifold API implementation.
 
-use std::{
-    io::{ErrorKind, SeekFrom},
-    sync::Arc,
-};
+use std::io::{ErrorKind, SeekFrom};
 
 use axum::{
     body::{Body, Bytes},
@@ -14,10 +11,7 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use storage::{Bucket, FileCreateError, FileHandleOps, FileOpenError, StorageBackend};
-use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt},
-    sync::Mutex as TokioMutex,
-};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
 use tokio_stream::{Stream, StreamExt};
 
 use crate::{AppState, errors::ServiceError, explore, service_error};
@@ -168,25 +162,12 @@ async fn put_write_filename(
 
     match bucket.create_file(&filename).await {
         // File doesn't exist, so we upload till we run out of data
-        Ok(file) => {
-            // We have to use a bogus mutex since borrowck can't be convinced
-            // to rely on tokio::spawn's closure finishing before the next
-            // iteration. The mutex is never contended.
-            let file = Arc::new(TokioMutex::new(file));
-
+        Ok(mut file) => {
             let mut data_stream = request.into_data_stream();
             while let Some(data) = data_stream.try_next().await.map_err(ApiError::internal)? {
-                let file = file.clone();
-                // This needs to be uncancellable so that it is somewhat atomic
-                // (though see Note [Streaming request bodies atomicity]).
-                tokio::spawn(async move {
-                    let mut file = file.lock_owned().await;
-                    file.append(&data).await
-                })
-                .await
-                .map_err(ApiError::internal)?
-                .map_err(ApiError::internal)?;
+                file.append(&data).await.map_err(ApiError::internal)?;
             }
+            file.commit().await.map_err(ApiError::internal)?;
 
             Ok(())
         }
@@ -269,24 +250,11 @@ async fn post_append_filename(
 
     // This is not an idempotency request, so we can safely append.
 
-    // We have to use a bogus mutex since borrowck can't be convinced
-    // to rely on tokio::spawn's closure finishing before the next
-    // iteration. The mutex is never contended.
-    let file = Arc::new(TokioMutex::new(file));
-
     let mut data_stream = request.into_data_stream();
     while let Some(data) = data_stream.try_next().await.map_err(ApiError::internal)? {
-        let file = file.clone();
-        // This needs to be uncancellable so that it is somewhat atomic
-        // (though see Note [Streaming request bodies atomicity]).
-        tokio::spawn(async move {
-            let mut file = file.lock_owned().await;
-            file.append(&data).await
-        })
-        .await
-        .map_err(ApiError::internal)?
-        .map_err(ApiError::internal)?;
+        file.append(&data).await.map_err(ApiError::internal)?;
     }
+    file.commit().await.map_err(ApiError::internal)?;
 
     Ok(())
 }

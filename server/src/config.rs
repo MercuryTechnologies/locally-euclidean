@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use axum::BoxError;
 
 #[derive(Debug, thiserror::Error)]
@@ -24,8 +22,8 @@ pub struct AppConfig {
     #[serde(default = "AppConfig::default_allowed_content_types")]
     pub allowed_content_types: Vec<String>,
 
-    /// Root directory of the file storage
-    pub file_storage_root: PathBuf,
+    /// Database connection string for a Postgres database [according to sqlx](https://docs.rs/sqlx/0.8.6/sqlx/postgres/struct.PgConnectOptions.html).
+    pub db_connection_string: String,
 }
 
 impl AppConfig {
@@ -41,22 +39,22 @@ impl AppConfig {
         ]
     }
 
-    /// Creates a testing AppConfig that stores files in a temporary directory.
-    pub fn build_for_test() -> Result<(tempfile::TempDir, AppConfig), BoxError> {
-        let temp_dir = tempfile::TempDir::with_suffix("locally-euclidean-test")?;
-        let file_storage_root = temp_dir.path().to_path_buf();
-        Ok((
-            temp_dir,
-            AppConfig {
-                max_upload_size_mb: 5,
-                allowed_content_types: Self::default_allowed_content_types(),
-                file_storage_root,
-            },
-        ))
+    /// Creates a testing AppConfig. Database sold separately.
+    pub fn build_for_test() -> Result<AppConfig, BoxError> {
+        Ok(AppConfig {
+            max_upload_size_mb: 5,
+            allowed_content_types: Self::default_allowed_content_types(),
+            // Garbage value, not actually used
+            db_connection_string: "".to_owned(),
+        })
     }
 
     pub fn build() -> Result<AppConfig, ConfigBuildError> {
         let config_unparsed = ::config::Config::builder()
+            .add_source(
+                ::config::File::new("locally-euclidean.toml", ::config::FileFormat::Toml)
+                    .required(false),
+            )
             // e.g. LOC_EUC_FILE_STORAGE_ROOT
             .add_source(::config::Environment::with_prefix("LOC_EUC"))
             .build()
