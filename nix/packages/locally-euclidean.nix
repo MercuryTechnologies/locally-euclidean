@@ -4,24 +4,38 @@
   stdenv,
   vmTools,
   e2fsprogs,
+  shadow,
   inputs,
   rustPlatform,
   rust-analyzer,
+  sqlx-cli,
+  process-compose,
+  postgresql,
 }:
 let
-  src = lib.cleanSourceWith {
-    src = craneLib.path (inputs.self.outPath);
-    filter = craneLib.filterCargoSources;
+  inherit (lib) fileset;
+  src = fileset.toSource {
+    root = ../..;
+    fileset = fileset.unions [
+      (fileset.fileFilter ({ hasExt, ... }: hasExt "toml" || hasExt "rs") ../..)
+      ../../Cargo.lock
+      ../../migrations
+      ../../.sqlx
+    ];
   };
 
-  commonArgs' = {
+  commonArgsDeps = {
     pname = "locally-euclidean";
     inherit src;
+  };
+  commonArgs' = commonArgsDeps // {
+    # We need postgres for various db stuff in tests.
+    nativeBuildInputs = [ postgresql ];
   };
 
   # Build *just* the cargo dependencies, so we can reuse
   # all of that work (e.g. via cachix) when running in CI
-  cargoArtifacts = craneLib.buildDepsOnly commonArgs';
+  cargoArtifacts = craneLib.buildDepsOnly commonArgsDeps;
 
   commonArgs = commonArgs' // {
     inherit cargoArtifacts;
@@ -38,6 +52,25 @@ let
           # Seems that the default memory size is not large enough.
           # This is megabytes.
           memSize = 6072;
+
+          preBuild = ''
+            ${old.preBuild or ""}
+            ${lib.getExe' shadow "useradd"} -m postgres
+            env
+          '';
+
+          # FIXME(jadel): tests are currently, frustratingly, rebuilt every time inside
+          # the VM anyway, due to the embedded migrations saving absolute file paths
+          # into cargo's incremental state somewhere such that it gets invalidated if
+          # the source directory moves.
+          #
+          # The fix to this, though, is to just get rid of the VM and the split when we
+          # get rid of the file backend, so, for now, whatever.
+          #
+          # This debug output is left in to make the problem's cause obvious.
+          env = (old.env or { }) // {
+            CARGO_LOG = "cargo::core::compiler::fingerprint=info";
+          };
 
           # Provide a rootfs that is not itself on tmpfs.
           mountDisk = true;
@@ -58,8 +91,11 @@ let
   };
   testBuild = craneLib.cargoTest testArgs;
 
-  testRunArgs = commonArgs' // {
+  testRunArgs = commonArgs // {
     cargoArtifacts = testBuild;
+    env = (commonArgs'.env or { }) // {
+      RUST_BACKTRACE = 1;
+    };
   };
 
   releaseArgs = commonArgs // {
@@ -104,6 +140,8 @@ let
     # Extra development tools (cargo and rustc are included by default).
     packages = [
       rust-analyzer
+      sqlx-cli
+      process-compose
     ];
   };
 in

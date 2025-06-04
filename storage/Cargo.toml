@@ -13,6 +13,8 @@ pin-project.workspace = true
 xattr.workspace = true
 tracing.workspace = true
 time.workspace = true
+sqlx.workspace = true
+tmp-postgrust.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
