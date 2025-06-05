@@ -29,6 +29,9 @@ http-body-util.workspace = true
 tokio-stream.workspace = true
 tokio-util.workspace = true
 httpdate = "1.0.3"
+clap = { version = "4.5.39", features = ["derive"] }
+sqlx.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
 axum-test.workspace = true

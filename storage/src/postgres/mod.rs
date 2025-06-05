@@ -264,7 +264,7 @@ pub struct PostgresBackend {
 
 impl PostgresBackend {
     /// Runs migrations against the pool.
-    pub async fn migrate(pool: PgPool) -> Result<(), BoxError> {
+    pub async fn migrate(pool: PgPool) -> Result<(), sqlx::Error> {
         // Verify that you can actually run a query at all (and that sqlx bits
         // are all working).
         let q = sqlx::query!("select 1 as foo");
@@ -284,8 +284,8 @@ impl PostgresBackend {
 
     /// Constructs a PostgresBackend against the given pool. Does not run
     /// migrations (!).
-    pub async fn new(pool: PgPool) -> Result<PostgresBackend, BoxError> {
-        Ok(PostgresBackend { pool })
+    pub fn new(pool: PgPool) -> PostgresBackend {
+        PostgresBackend { pool }
     }
 }
 
@@ -326,7 +326,12 @@ pub mod testing {
 
     pub struct Fixture {
         pub backend: PostgresBackend,
-        _db: tmp_postgrust::asynchronous::ProcessGuard,
+        pub db: Guard,
+    }
+
+    /// Guard that holds the database process alive.
+    pub struct Guard {
+        _process: tmp_postgrust::asynchronous::ProcessGuard,
     }
 
     impl Deref for Fixture {
@@ -374,9 +379,12 @@ pub mod testing {
             };
 
             let pool = PgPool::connect_lazy(&db.connection_string())?;
-            let backend = PostgresBackend::new(pool).await?;
+            let backend = PostgresBackend::new(pool);
 
-            Ok(Fixture { backend, _db: db })
+            Ok(Fixture {
+                backend,
+                db: Guard { _process: db },
+            })
         }
 
         pub async fn new_with_bucket() -> Result<Fixture, BoxError> {
