@@ -7,15 +7,58 @@ use server::tracing_setup;
 use std::net::Ipv6Addr;
 use tracing::info;
 
+fn parse_timedelta(input: &str) -> Result<chrono::TimeDelta, humantime::DurationError> {
+    humantime::parse_duration(input)
+        .map(|duration| chrono::TimeDelta::from_std(duration).expect("duration out of range"))
+}
+
+/// Create a bucket.
+#[derive(clap::Args)]
+struct CreateBucketArgs {
+    /// Name of the bucket.
+    name: String,
+    /// How long before files should be deleted, if the client doesn't specify
+    /// a TTL themselves.
+    #[clap(value_parser = parse_timedelta)]
+    default_ttl: Option<chrono::TimeDelta>,
+}
+
+#[derive(clap::Subcommand)]
+enum MaintenanceTask {
+    CreateBucket(CreateBucketArgs),
+}
+
+/// Perform some offline maintenance task against the locally-euclidean
+/// instance.
+#[derive(clap::Parser)]
+struct Maintenance {
+    #[clap(subcommand)]
+    task: MaintenanceTask,
+}
+
 #[derive(clap::Parser)]
 enum Subcommand {
+    /// Run the service.
     Serve,
+    Maintenance(Maintenance),
 }
 
 #[derive(clap::Parser)]
 struct Args {
     #[clap(subcommand)]
     subcommand: Subcommand,
+}
+
+async fn run_maintenance(config: AppConfig, maintenance: Maintenance) -> Result<(), BoxError> {
+    let state = AppStateInner::new(config).await?;
+
+    match maintenance.task {
+        MaintenanceTask::CreateBucket(CreateBucketArgs { name, default_ttl }) => {
+            let bucket = state.store.create_bucket(&name, default_ttl).await?;
+            tracing::info!("Created: {bucket:?}");
+        }
+    }
+    Ok(())
 }
 
 #[tokio::main]
@@ -37,6 +80,7 @@ async fn main() -> Result<(), BoxError> {
             let listener = tokio::net::TcpListener::bind(binding).await?;
             axum::serve(listener, app).await?;
         }
+        Subcommand::Maintenance(maintenance) => run_maintenance(config, maintenance).await?,
     };
 
     Ok(())
