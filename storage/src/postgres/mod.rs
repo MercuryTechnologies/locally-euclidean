@@ -422,6 +422,25 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "locking not yet implemented"]
+    async fn test_open_same_file_concurrency() -> Result<(), BoxError> {
+        let backend = Fixture::new_with_bucket().await?;
+
+        let bucket = backend.bucket("bucket").await?;
+        let handle1 = bucket.create_file("meow").await?;
+        let handle2_fut = bucket.file("meow");
+        let timeout = tokio::time::timeout(std::time::Duration::from_millis(10), handle2_fut).await;
+        // This must time out since we don't allow concurrency on individual
+        // files
+        assert!(timeout.is_err());
+
+        let handle2_fut = bucket.file("meow");
+        drop(handle1);
+        let _ = handle2_fut.await.unwrap();
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_bucket_create_file_once() -> Result<(), BoxError> {
         let backend = Fixture::new_with_bucket().await?;
 
