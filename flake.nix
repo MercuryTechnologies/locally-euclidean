@@ -87,9 +87,12 @@
         let
           inherit (nixpkgs) lib;
           localPkgs = self.localPkgs.${localSystem};
+          pkgs = self._pkgs.${localSystem};
           inherit (localPkgs) locally-euclidean;
         in
-        (lib.filterAttrs (name: value: lib.isDerivation value) localPkgs)
+        (lib.filterAttrs (
+          name: value: lib.isDerivation value && lib.meta.availableOn pkgs.stdenv.hostPlatform value
+        ) localPkgs)
         // {
           inherit locally-euclidean;
           default = locally-euclidean;

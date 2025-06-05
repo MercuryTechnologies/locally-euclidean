@@ -2,7 +2,9 @@
   lib,
   craneLib,
   inputs,
+  stdenv,
   rustPlatform,
+  podman,
   rust-analyzer,
   sqlx-cli,
   process-compose,
@@ -19,6 +21,10 @@ let
       ../../.sqlx
     ];
   };
+
+  version = "${
+    builtins.substring 0 8 (inputs.self.lastModifiedDate or inputs.self.lastModified or "19700101")
+  }_${inputs.self.shortRev or "dirty"}";
 
   commonArgsDeps = {
     pname = "locally-euclidean";
@@ -45,10 +51,16 @@ let
   };
 
   releaseArgs = commonArgs // {
+    inherit version;
     # Don't run tests; we'll do that in a separate derivation.
     doCheck = false;
+
     passthru = {
       inherit checks devShell;
+    };
+
+    meta = {
+      mainProgram = "locally-euclidean";
     };
   };
 
@@ -83,10 +95,11 @@ let
     RUST_SRC_PATH = rustPlatform.rustLibSrc;
 
     # Extra development tools (cargo and rustc are included by default).
-    packages = [
+    packages = lib.filter (lib.meta.availableOn stdenv.hostPlatform) [
       rust-analyzer
       sqlx-cli
       process-compose
+      podman
     ];
   };
 in
