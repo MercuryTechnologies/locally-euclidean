@@ -5,11 +5,14 @@ pub mod explore;
 mod security_headers;
 pub mod tracing_setup;
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
 
-use axum::routing::get;
+use axum::{
+    http::{HeaderValue, header::SERVER},
+    routing::get,
+};
 use config::AppConfig;
 use sqlx::PgPool;
 use storage::postgres::PostgresBackend;
@@ -58,6 +61,15 @@ impl AppStateInner {
     }
 }
 
+static VERSION_HEADER: LazyLock<String> = LazyLock::new(|| {
+    // We set version in the nix derivation which happens to wind up in env.
+    // Hey, it works.
+    let version = option_env!("version").unwrap_or("?");
+    format!(
+        "locally-euclidean/{version} (https://github.com/mercurytechnologies/locally-euclidean)"
+    )
+});
+
 /// Creates the app router.
 pub fn make_app(state: AppState) -> axum::Router {
     // Note: Middleware is applied to existing routes only; routes added after
@@ -87,7 +99,13 @@ pub fn make_app(state: AppState) -> axum::Router {
                 // Include trace context as header into the response
                 .layer(OtelInResponseLayer)
                 .layer(security_headers::cors())
-                .layer(axum::middleware::map_response(security_headers::headers)),
+                .layer(axum::middleware::map_response(security_headers::headers))
+                .layer(
+                    tower_http::set_header::SetResponseHeaderLayer::if_not_present(
+                        SERVER,
+                        HeaderValue::from_static(&VERSION_HEADER),
+                    ),
+                ),
         )
         .with_state(state)
         // Processed *outside* span
