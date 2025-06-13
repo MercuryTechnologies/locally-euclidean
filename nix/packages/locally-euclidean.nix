@@ -8,7 +8,7 @@
   rust-analyzer,
   sqlx-cli,
   process-compose,
-  postgresql,
+  postgresql_16,
 }:
 let
   inherit (lib) fileset;
@@ -32,7 +32,7 @@ let
   };
   commonArgs' = commonArgsDeps // {
     # We need postgres for various db stuff in tests.
-    nativeBuildInputs = [ postgresql ];
+    nativeBuildInputs = [ postgresql_16 ];
   };
 
   # Build *just* the cargo dependencies, so we can reuse
