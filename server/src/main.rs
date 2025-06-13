@@ -4,7 +4,6 @@ use server::AppStateInner;
 use server::config::AppConfig;
 use server::make_app;
 use server::tracing_setup;
-use std::net::Ipv6Addr;
 use tracing::info;
 
 fn parse_timedelta(input: &str) -> Result<chrono::TimeDelta, humantime::DurationError> {
@@ -73,11 +72,11 @@ async fn main() -> Result<(), BoxError> {
 
     match args.subcommand {
         Subcommand::Serve => {
-            let app = make_app(AppStateInner::new(config).await?);
+            let state = AppStateInner::new(config).await?;
+            let app = make_app(state.clone());
 
-            let binding = (Ipv6Addr::LOCALHOST, 9000);
-            info!("Listening on http://[{}]:{}", binding.0, binding.1);
-            let listener = tokio::net::TcpListener::bind(binding).await?;
+            info!("Listening on http://{}", state.config.bind_address);
+            let listener = tokio::net::TcpListener::bind(state.config.bind_address).await?;
             axum::serve(listener, app).await?;
         }
         Subcommand::Maintenance(maintenance) => run_maintenance(config, maintenance).await?,
