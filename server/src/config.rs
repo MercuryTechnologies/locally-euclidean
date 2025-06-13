@@ -29,7 +29,7 @@ pub struct AppConfig {
     /// NOTE: the default only allows connections from localhost! This may or
     /// may not be a problem depending on setup.
     ///
-    /// This is [::1]:9000.
+    /// This is `[::1]:9000`.
     #[serde(default = "AppConfig::default_bind_address")]
     pub bind_address: SocketAddr,
 
