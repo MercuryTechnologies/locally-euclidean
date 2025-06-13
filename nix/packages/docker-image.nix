@@ -25,6 +25,13 @@ let
         # "OTEL_EXPORTER_OTLP_ENDPOINT=http://somehost:4317"
         # "OTEL_EXPORTER_OTLP_PROTOCOL=grpc"
         # "OTEL_TRACES_EXPORTER=otlp"
+
+        # I am uncertain whether this is necessary, since SURELY the port
+        # redirects are done *from within* the container so listening on
+        # [::1]:9000 should be fine, but I am committing this while trying to
+        # fix a health check that makes no sense why it is failing and which is
+        # not getting any requests through. Shrug!
+        "LOC_EUC_BIND_ADDRESS=[::]:9000"
       ];
       Entrypoint = [
         "${lib.getExe tini}"

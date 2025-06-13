@@ -111,3 +111,10 @@ You can use the sqlx tools to do migration development:
 **Currently** (this would be bad practice if the app were larger), migrations are run on application startup and no effort is made to prevent blowing up prod with this.
 
 Don't write migrations that break back-compat for the prior version of the app.
+
+## Deploying our prod instance
+
+If you work at Mercury, you currently have to manually deploy the prod instance.
+
+Trigger this GitHub action (in our private repo) to deploy:
+<https://github.com/MercuryTechnologies/infra-apps/actions/workflows/deploy-locally-euclidean.yml>
