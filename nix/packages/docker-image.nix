@@ -1,6 +1,7 @@
 {
   lib,
   locally-euclidean,
+  cacert,
   tini,
   bash,
   coreutils,
@@ -16,6 +17,8 @@ let
       bash
       coreutils
       curl
+      # Required for rustls-native-certs to have CA verification for e.g. opentelemetry
+      cacert
     ];
 
     config = {
