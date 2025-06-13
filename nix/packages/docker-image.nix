@@ -4,6 +4,7 @@
   cacert,
   tini,
   bash,
+  postgresql_16,
   coreutils,
   curl,
   dockerTools,
@@ -15,6 +16,7 @@ let
     maxLayers = 120;
     contents = [
       bash
+      postgresql_16
       coreutils
       curl
       # Required for rustls-native-certs to have CA verification for e.g. opentelemetry
