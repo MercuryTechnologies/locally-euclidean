@@ -27,6 +27,7 @@ jobs:
           # accept-flake-config is not normally ok. it's still not great here,
           # but putting code in our flake.nix is equivalent to this in this
           # case anyway.
-          registry_path=$(echo "ghcr.io/${{ github.repository_owner }}/locally-euclidean:latest" | tr 'A-Z' 'a-z')
-          EXTRA_TAGS="${{ github.sha }}" nix run -L --accept-flake-config .#docker-push "$registry_path"
+          registry_path=$(echo "ghcr.io/${{ github.repository_owner }}/locally-euclidean" | tr 'A-Z' 'a-z')
+          nix run -L --accept-flake-config .#docker-push "$registry_path:latest"
+          nix run -L --accept-flake-config .#docker-push "$registry_path:${{ github.sha }}"
 
