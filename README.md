@@ -37,9 +37,7 @@ For the reasons of quickness of writing it and the goals of not having to touch 
 
 ## Functionality
 
-Buckets are statically defined (TODO: configuration mechanism?), and are directories.
-
-TODO: this must change for postgres backend.
+Buckets are defined by `locally-euclidean maintenance create-bucket NAME [ttl]`.
 
 ### PUT `/v0/write/:filename?bucketName=:bucketName`
 
@@ -72,21 +70,35 @@ This shows the file at the given path to the browser with the `Content-Type` giv
 
 * Is it semantically acceptable to stream the request body?
 
-  Technically the request could partially finish before dying, and either we have to
-  fully buffer the request body in memory (maybe fine) or write it to the
-  final file as we go (which means that we don't have atomicity in the
-  case of surprise-disconnects). We can also ignore it for now since we don't
-  care *that* much about durability since these are just build log files.
+  Yes! We are writing into a transactional database.
+  Just do the whole thing in a transaction, it's Fine(tm).
 
-  A design change that would fix this is to use copy_file_range to
-  leverage modern CoW filesystems such that appending to a file is done by
-  appending to a buffer then renaming over the original file. However,
-  this breaks inode based locking schemes and would require locking on the
-  basis of canonicalized filename. In short: also eww edge cases!
+  FIXME: currently creating a file and writing into it are in separate transactions IIRC, which is *weird*. We probably should fix that.
 
-  Alternatively we could use directories for each file and write it as parts;
-  that seems simply worse however. Overall this is a reminder that all of this
-  stuff is really hard.
+# Setup for buck2
+
+You want the [following buckets][buckets]; the TTL does not especially matter as buck2 sets it itself as well, and we will respect what it tells us (FIXME: in the future!):
+- `buck2_logs`: build logs
+- `buck2_re_logs`: remote execution logs
+- `buck2_installer_logs`: logs for the buck2 installer
+- `buck2_rage_dumps`: output from `buck2 rage`
+
+[buckets]: https://github.com/facebook/buck2/blob/f2d09c40ff337005aaeeb5883e03b17e37236cab/app/buck2_common/src/manifold.rs#L146-L166
+
+Then, with a [buck2 with the right patch][buck2-patch], configure `.buckconfig` like so:
+
+```
+[buckets]
+upload_url = https://locally-euclidean.example.com
+file_view_url = https://locally-euclidean.example.com/explore/
+
+[buck2]
+log_url = https://locally-euclidean.example.com
+```
+
+[buck2-patch]: https://github.com/facebook/buck2/pull/968
+
+This will upload logs to locally-euclidean automatically and allow downloading them transparently when they are not available locally.
 
 # Development
 
