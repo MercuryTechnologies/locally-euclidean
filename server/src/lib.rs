@@ -3,6 +3,7 @@ pub mod config;
 mod errors;
 pub mod explore;
 mod security_headers;
+pub mod tasks;
 pub mod tracing_setup;
 
 use std::sync::{Arc, LazyLock};

@@ -3,7 +3,9 @@ use clap::Parser as _;
 use server::AppStateInner;
 use server::config::AppConfig;
 use server::make_app;
+use server::tasks;
 use server::tracing_setup;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 fn parse_timedelta(input: &str) -> Result<chrono::TimeDelta, humantime::DurationError> {
@@ -75,9 +77,26 @@ async fn main() -> Result<(), BoxError> {
             let state = AppStateInner::new(config).await?;
             let app = make_app(state.clone());
 
+            let terminate = CancellationToken::new();
+            tokio::spawn({
+                let interrupted = terminate.clone();
+                async move {
+                    tokio::signal::ctrl_c()
+                        .await
+                        .expect("failed to listen for ctrl-c, wat");
+                    interrupted.cancel();
+                }
+            });
+
+            info!("Starting scheduled maintenance tasks");
+            tasks::start_maintenance_tasks(state.clone(), terminate.clone()).await;
+
             info!("Listening on http://{}", state.config.bind_address);
             let listener = tokio::net::TcpListener::bind(state.config.bind_address).await?;
-            axum::serve(listener, app).await?;
+
+            axum::serve(listener, app)
+                .with_graceful_shutdown(terminate.cancelled_owned())
+                .await?;
         }
         Subcommand::Maintenance(maintenance) => run_maintenance(config, maintenance).await?,
     };

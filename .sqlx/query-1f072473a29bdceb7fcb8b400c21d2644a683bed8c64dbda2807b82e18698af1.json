@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            with deletion_batch as (\n                select id from files\n                where delete_after is not null and delete_after < now()\n                order by delete_after asc\n                for update\n                limit 1000\n            ) delete from files as fs\n                using deletion_batch as dl\n                where dl.id = fs.id\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "1f072473a29bdceb7fcb8b400c21d2644a683bed8c64dbda2807b82e18698af1"
+}

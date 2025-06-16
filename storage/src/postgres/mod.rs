@@ -287,6 +287,27 @@ impl PostgresBackend {
     pub fn new(pool: PgPool) -> PostgresBackend {
         PostgresBackend { pool }
     }
+
+    /// Deletes up to 1000 expired files.
+    #[tracing::instrument(skip(self))]
+    pub async fn delete_old_files_batch(&self) -> Result<(), BoxError> {
+        let query = sqlx::query!(
+            r#"
+            with deletion_batch as (
+                select id from files
+                where delete_after is not null and delete_after < now()
+                order by delete_after asc
+                for update
+                limit 1000
+            ) delete from files as fs
+                using deletion_batch as dl
+                where dl.id = fs.id
+        "#
+        );
+        let result = query.execute(&self.pool).await?;
+        tracing::info!(how_many = result.rows_affected(), "Deleted expired files");
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -397,6 +418,8 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use tokio::io::AsyncReadExt;
 
     use super::testing::*;
@@ -499,6 +522,38 @@ mod tests {
             file.read_to_string(&mut string).await?;
             assert_eq!(string, "data");
         }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_cleanup() -> Result<(), BoxError> {
+        let backend = Fixture::new_with_bucket().await?;
+        backend
+            .create_bucket("bucket2", Some(TimeDelta::milliseconds(5)))
+            .await?;
+
+        let bucket2 = backend.bucket("bucket2").await?;
+        {
+            let mut file = bucket2.create_file("meow/kitty").await?;
+            file.append(b"data").await?;
+            file.commit().await?;
+        }
+        let bucket = backend.bucket("bucket").await?;
+        {
+            let mut file = bucket.create_file("file_two").await?;
+            file.append(b"data").await?;
+            file.commit().await?;
+        }
+
+        bucket2.file("meow/kitty").await.expect("file still exists");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        backend.delete_old_files_batch().await?;
+
+        let Err(FileOpenError::DoesNotExist) = bucket2.file("meow/kitty").await else {
+            panic!("file still exists or something");
+        };
+        bucket.file("file_two").await.expect("file_two vanished?");
 
         Ok(())
     }
