@@ -27,7 +27,7 @@ pub struct AppStateInner {
     pub store: PostgresBackend,
 }
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, miette::Diagnostic, Debug)]
 pub enum AppStartupError {
     #[error("Failed to connect to database: {0}")]
     ConnectToDB(sqlx::Error),

@@ -2,7 +2,7 @@ use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 
 use axum::BoxError;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum ConfigBuildError {
     #[error("Failed to collect config items: {0}")]
     FailedToCollect(::config::ConfigError),
