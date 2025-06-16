@@ -28,9 +28,6 @@ writeShellApplication {
       docker-archive:${docker-image}
       "docker://$registry_path"
     )
-    if [[ -v $EXTRA_TAGS ]]; then
-      args+=(--additional-tag "$EXTRA_TAGS")
-    fi
     skopeo "''${args[@]}"
   '';
   meta = {
